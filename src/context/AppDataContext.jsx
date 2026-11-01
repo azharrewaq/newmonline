@@ -6,8 +6,10 @@ import {
   attendancesAPI, sessionReportsAPI, platformTopManagementAPI, platformSupervisorsAPI, platformCoordinatorsAPI,
   platformMohfezsAPI, platformSessionsAPI, platformStudentsAPI, platformApplicantsAPI,
   platformRowaqsAPI, administrationsAPI, rolePermissionsAPI,
-  shariaCoursesAPI, shariaBranchesAPI, shariaStudentsAPI, shariaTeachersAPI, shariaLivesAPI, shariaDailyReportsAPI, shariaNewsAPI
+  shariaCoursesAPI, shariaBranchesAPI, shariaStudentsAPI, shariaTeachersAPI, shariaLivesAPI, shariaDailyReportsAPI, shariaNewsAPI,
+  holidaysAPI, announcementsAPI, announcementRepliesAPI, staffAttendancesAPI
 } from '../utils/apiService';
+import { findStudentRecord, getStudentsOfSession, toLocalDateStr } from '../utils/sessionHelpers';
 
 const AppDataContext = createContext(null);
 
@@ -325,6 +327,10 @@ export function AppDataProvider({ children }) {
   const [auditLogs, setAuditLogs] = useState(() => getFromLocalStorage('auditLogs', []));
   const [attendances, setAttendances] = useState(() => getFromLocalStorage('attendances', []));
   const [sessionReports, setSessionReports] = useState(() => getFromLocalStorage('sessionReports', []));
+  const [holidays, setHolidays] = useState(() => getFromLocalStorage('holidays', []));
+  const [announcements, setAnnouncements] = useState(() => getFromLocalStorage('announcements', []));
+  const [announcementReplies, setAnnouncementReplies] = useState(() => getFromLocalStorage('announcementReplies', []));
+  const [staffAttendances, setStaffAttendances] = useState(() => getFromLocalStorage('staffAttendances', []));
 
   // Platform Dashboard States
   const [platformTopManagement, setPlatformTopManagement] = useState(() => getFromLocalStorage('platformTopManagement', []));
@@ -557,6 +563,10 @@ export function AppDataProvider({ children }) {
         await syncCollection(applicantBranchesAPI, applicantBranches, setApplicantBranches, 'applicantBranches');
         await syncCollection(attendancesAPI, attendances, setAttendances, 'attendances');
         await syncCollection(sessionReportsAPI, sessionReports, setSessionReports, 'sessionReports');
+        await syncCollection(holidaysAPI, holidays, setHolidays, 'holidays');
+        await syncCollection(announcementsAPI, announcements, setAnnouncements, 'announcements');
+        await syncCollection(announcementRepliesAPI, announcementReplies, setAnnouncementReplies, 'announcementReplies');
+        await syncCollection(staffAttendancesAPI, staffAttendances, setStaffAttendances, 'staffAttendances');
 
         await syncCollection(platformTopManagementAPI, platformTopManagement, setPlatformTopManagement, 'platformTopManagement');
         await syncCollection(platformSupervisorsAPI, platformSupervisors, setPlatformSupervisors, 'platformSupervisors');
@@ -1753,6 +1763,134 @@ export function AppDataProvider({ children }) {
     }
   };
 
+  // ───────── الإجازات / الإعلانات / الردود / حضور الكادر ─────────
+  useEffect(() => { saveToLocalStorage('holidays', holidays); }, [holidays]);
+  useEffect(() => { saveToLocalStorage('announcements', announcements); }, [announcements]);
+  useEffect(() => { saveToLocalStorage('announcementReplies', announcementReplies); }, [announcementReplies]);
+  useEffect(() => { saveToLocalStorage('staffAttendances', staffAttendances); }, [staffAttendances]);
+
+  // تحديث دوري للإعلانات والردود ليصل الإشعار دون إعادة تحميل الصفحة
+  useEffect(() => {
+    const norm = (list) => list.map(item => ({ ...item, id: item.id || item._id }));
+    const poll = async () => {
+      const [anns, reps] = await Promise.all([
+        announcementsAPI.getAll().catch(() => null),
+        announcementRepliesAPI.getAll().catch(() => null),
+      ]);
+      if (Array.isArray(anns)) setAnnouncements(norm(anns));
+      if (Array.isArray(reps)) setAnnouncementReplies(norm(reps));
+    };
+    const t = setInterval(poll, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  const addHoliday = (holiday) => {
+    const newItem = { ...holiday, id: String(Date.now()) };
+    setHolidays(prev => [...prev, newItem]);
+    holidaysAPI.create(newItem).catch(err => console.error(err));
+  };
+  const deleteHoliday = (id) => {
+    if (window.confirm('هل أنت متأكد من حذف الإجازة؟')) {
+      setHolidays(prev => prev.filter(h => String(h.id) !== String(id)));
+      holidaysAPI.delete(id).catch(err => console.error(err));
+    }
+  };
+
+  const addAnnouncement = (announcement) => {
+    const newItem = { ...announcement, id: String(Date.now()), createdAt: new Date().toISOString() };
+    setAnnouncements(prev => [newItem, ...prev]);
+    announcementsAPI.create(newItem).catch(err => console.error(err));
+  };
+  const deleteAnnouncement = (id) => {
+    if (window.confirm('هل أنت متأكد من حذف الإعلان وجميع الردود عليه؟')) {
+      setAnnouncements(prev => prev.filter(a => String(a.id) !== String(id)));
+      announcementsAPI.delete(id).catch(err => console.error(err));
+      announcementReplies
+        .filter(r => String(r.announcementId) === String(id))
+        .forEach(r => announcementRepliesAPI.delete(r.id).catch(err => console.error(err)));
+      setAnnouncementReplies(prev => prev.filter(r => String(r.announcementId) !== String(id)));
+    }
+  };
+  const addAnnouncementReply = (reply) => {
+    const newItem = { ...reply, id: String(Date.now()), createdAt: new Date().toISOString(), readByAdmin: false };
+    setAnnouncementReplies(prev => [...prev, newItem]);
+    announcementRepliesAPI.create(newItem).catch(err => console.error(err));
+  };
+  const markAnnouncementRepliesRead = (ids) => {
+    const set = new Set(ids.map(String));
+    if (set.size === 0) return;
+    setAnnouncementReplies(prev => prev.map(r => set.has(String(r.id)) ? { ...r, readByAdmin: true } : r));
+    ids.forEach(id => announcementRepliesAPI.update(id, { readByAdmin: true }).catch(err => console.error(err)));
+  };
+
+  const updateAttendance = (id, data) => {
+    setAttendances(prev => prev.map(a => String(a.id) === String(id) ? { ...a, ...data } : a));
+    attendancesAPI.update(id, data).catch(err => console.error(err));
+  };
+
+  /**
+   * تسجيل حضور تلقائي بمجرد الدخول على رابط الانضمام للحلقة
+   * - الدارس: يُسجَّل حاضراً في سجل غياب اليوم
+   * - المحفظ / المنسق: يُسجَّل في سجل حضور الكادر
+   */
+  const recordSessionJoin = (session, user) => {
+    if (!session || !user) return;
+    const role = user.role;
+    const today = toLocalDateStr();
+    const todaySlash = today.replace(/-/g, '/');
+
+    if (role === 'student') {
+      const studentRec = findStudentRecord(user, platformStudents);
+      if (!studentRec) return;
+      const existing = attendances.find(a =>
+        String(a.sessionId) === String(session.id) && !!a.isPlatform &&
+        String(a.date || '').replace(/\//g, '-') === today
+      );
+      if (existing) {
+        const records = [...(existing.records || [])];
+        const idx = records.findIndex(r => String(r.studentId) === String(studentRec.id));
+        if (idx >= 0) {
+          if (records[idx].isPresent) return;
+          records[idx] = { ...records[idx], isPresent: true, joinedAt: new Date().toISOString() };
+        } else {
+          records.push({ studentId: studentRec.id, studentName: studentRec.name, isPresent: true, joinedAt: new Date().toISOString() });
+        }
+        const presentCount = records.filter(r => r.isPresent).length;
+        updateAttendance(existing.id, { records, presentCount, absentCount: records.length - presentCount });
+      } else {
+        const sessionStudents = getStudentsOfSession(session, platformStudents);
+        if (!sessionStudents.some(s => String(s.id) === String(studentRec.id))) sessionStudents.push(studentRec);
+        const records = sessionStudents.map(s => ({
+          studentId: s.id,
+          studentName: s.name,
+          isPresent: String(s.id) === String(studentRec.id),
+          ...(String(s.id) === String(studentRec.id) ? { joinedAt: new Date().toISOString() } : {})
+        }));
+        const presentCount = records.filter(r => r.isPresent).length;
+        addAttendance({
+          sessionId: String(session.id), isPlatform: true, date: todaySlash,
+          presentCount, absentCount: records.length - presentCount, records, auto: true
+        });
+      }
+      return;
+    }
+
+    if (role === 'platform_mohfez' || role === 'platform_coordinator') {
+      const nid = String(user.national_id || user.username || '').trim();
+      const already = staffAttendances.some(s =>
+        String(s.sessionId) === String(session.id) && s.date === today &&
+        String(s.nationalId) === nid && s.role === role
+      );
+      if (already) return;
+      const entry = {
+        id: String(Date.now()), sessionId: String(session.id), sessionNo: session.session_no,
+        date: today, role, nationalId: nid, name: user.name || '', joinedAt: new Date().toISOString()
+      };
+      setStaffAttendances(prev => [...prev, entry]);
+      staffAttendancesAPI.create(entry).catch(err => console.error(err));
+    }
+  };
+
   const addPlatformTopManagement = (item) => {
     const newItem = { ...item, id: String(Date.now()) };
     setPlatformTopManagement(prev => [...prev, newItem]);
@@ -2323,6 +2461,10 @@ export function AppDataProvider({ children }) {
       auditLogs,
       attendances, addAttendance, deleteAttendance,
       sessionReports, addSessionReport, deleteSessionReport,
+      updateAttendance, recordSessionJoin, staffAttendances,
+      holidays, addHoliday, deleteHoliday,
+      announcements, addAnnouncement, deleteAnnouncement,
+      announcementReplies, addAnnouncementReply, markAnnouncementRepliesRead,
 
       platformTopManagement, addPlatformTopManagement, updatePlatformTopManagement, deletePlatformTopManagement, deleteAllPlatformTopManagement,
       platformSupervisors, addPlatformSupervisor, updatePlatformSupervisor, deletePlatformSupervisor, deleteAllPlatformSupervisors,

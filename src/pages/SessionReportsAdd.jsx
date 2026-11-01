@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
 import { quranSurahs } from '../data/quranSurahs';
 import { isUserAllowedSession } from '../utils/userScopeHelper';
+import { getHolidayForDate, getNextSessionNumber } from '../utils/sessionHelpers';
+import { isPlatformManager } from '../utils/announcementHelpers';
 
 import { children1Curriculum } from '../data/children1';
 import { children2Curriculum } from '../data/children2';
@@ -84,7 +86,8 @@ function SessionReportsAdd() {
     platformCoordinators = [],
     platformMohfezs = [],
     platformStudents = [],
-    users = []
+    users = [],
+    holidays = []
   } = useAppData();
   
   const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
@@ -128,10 +131,49 @@ function SessionReportsAdd() {
   const selectedDayName = getArabicDayName(date);
   const sessionWorkDays = session?.workDays || [];
   const isInvalidDay = date && sessionWorkDays.length > 0 && !sessionWorkDays.includes(selectedDayName);
+  const holiday = isPlatform ? getHolidayForDate(date, holidays) : null;
+
+  const emptySection = { fromSurah: '', fromAyah: '', toSurah: '', toAyah: '' };
+  const applySessionNumber = (val) => {
+    setSessionNum(val);
+    if (val && curriculumData) {
+      const cur = curriculumData.find(c => c.session === parseInt(val));
+      if (cur) {
+        setMemorization({ ...cur.memorization });
+        setReview({ ...cur.review });
+        setRecentReview({ ...cur.recentReview });
+        setDistantReview(cur.distantReview ? { ...cur.distantReview } : { ...emptySection });
+        return;
+      }
+    }
+    setMemorization({ ...emptySection });
+    setReview({ ...emptySection });
+    setRecentReview({ ...emptySection });
+    setDistantReview({ ...emptySection });
+  };
+
+  // ترقيم ديناميكي: يبدأ من رقم جلسة البدء الذي حدده الأدمن ثم يزيد حسب ترتيب التقارير
+  const canOverrideSessionNum = isPlatformManager(currentUser);
+  const autoSessionNum = isPlatform && session ? String(getNextSessionNumber(session, sessionReports, true)) : '';
+  const autoAppliedFor = useRef(null);
+  useEffect(() => {
+    if (!isPlatform || !session || !autoSessionNum) return;
+    const key = `${session.id}:${autoSessionNum}`;
+    if (autoAppliedFor.current === key) return;
+    autoAppliedFor.current = key;
+    applySessionNumber(autoSessionNum);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlatform, session?.id, autoSessionNum, curriculumData]);
 
   const handleSave = () => {
     if (!date) {
       alert('يرجى اختيار التاريخ');
+      return;
+    }
+
+    // 0. منع التقارير في أيام الإجازات
+    if (holiday) {
+      alert(`لا يمكن تسجيل تقرير في يوم إجازة${holiday.name ? ` (${holiday.name})` : ''}`);
       return;
     }
 
@@ -291,6 +333,11 @@ function SessionReportsAdd() {
                 onChange={(e) => setDate(e.target.value)} 
                 style={isInvalidDay ? { borderColor: '#ef4444' } : {}}
               />
+              {holiday && (
+                <div style={{ color: '#ef4444', fontSize: '13px', marginTop: '6px', fontWeight: 'bold' }}>
+                  هذا اليوم إجازة{holiday.name ? ` (${holiday.name})` : ''} ولا يمكن إدراج تقرير فيه.
+                </div>
+              )}
               {isInvalidDay && (
                 <div style={{ color: '#ef4444', fontSize: '13px', marginTop: '6px', fontWeight: 'bold' }}>
                   تنبيه: هذا اليوم ({selectedDayName}) لا يوافق أيام عمل الحلقة ({sessionWorkDays.join('، ')}).
@@ -303,24 +350,8 @@ function SessionReportsAdd() {
                 <select 
                   className="form-select" 
                   value={sessionNum} 
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSessionNum(val);
-                    if (val) {
-                      const cur = curriculumData.find(c => c.session === parseInt(val));
-                      if (cur) {
-                        setMemorization({ ...cur.memorization });
-                        setReview({ ...cur.review });
-                        setRecentReview({ ...cur.recentReview });
-                        setDistantReview(cur.distantReview ? { ...cur.distantReview } : { fromSurah: '', fromAyah: '', toSurah: '', toAyah: '' });
-                      }
-                    } else {
-                      setMemorization({ fromSurah: '', fromAyah: '', toSurah: '', toAyah: '' });
-                      setReview({ fromSurah: '', fromAyah: '', toSurah: '', toAyah: '' });
-                      setRecentReview({ fromSurah: '', fromAyah: '', toSurah: '', toAyah: '' });
-                      setDistantReview({ fromSurah: '', fromAyah: '', toSurah: '', toAyah: '' });
-                    }
-                  }}
+                  disabled={isPlatform && !canOverrideSessionNum}
+                  onChange={(e) => applySessionNumber(e.target.value)}
                 >
                   <option value="">اختار رقم الجلسة</option>
                   {curriculumData.map(c => (
@@ -332,6 +363,7 @@ function SessionReportsAdd() {
                   type="text" 
                   className="form-input" 
                   value={sessionNum} 
+                  readOnly={isPlatform && !canOverrideSessionNum}
                   onChange={(e) => setSessionNum(e.target.value)} 
                   placeholder="رقم الجلسة"
                 />

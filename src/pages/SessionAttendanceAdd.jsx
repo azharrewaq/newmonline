@@ -15,6 +15,8 @@ function SessionAttendanceAdd() {
     students, 
     platformStudents, 
     addAttendance, 
+    updateAttendance,
+    attendances,
     hasPermission,
     platformCoordinators = [],
     platformMohfezs = [],
@@ -166,14 +168,32 @@ function SessionAttendanceAdd() {
       });
     });
     
-    addAttendance({
-      sessionId: String(sessionId),
-      isPlatform,
-      date,
-      presentCount,
-      absentCount,
-      records
-    });
+    // إذا وُجد سجل لنفس اليوم (مثلاً سُجّل تلقائياً عند دخول الدارسين للحلقة) يتم دمجه بدل تكراره
+    const normDate = (d) => String(d || '').replace(/\//g, '-');
+    const existing = (attendances || []).find(a =>
+      String(a.sessionId) === String(sessionId) && !!a.isPlatform === !!isPlatform && normDate(a.date) === normDate(date)
+    );
+    if (existing) {
+      const autoPresent = new Set((existing.records || []).filter(r => r.isPresent && r.joinedAt).map(r => String(r.studentId)));
+      const mergedRecords = records.map(r => autoPresent.has(String(r.studentId))
+        ? { ...r, isPresent: true, joinedAt: (existing.records.find(x => String(x.studentId) === String(r.studentId)) || {}).joinedAt }
+        : r);
+      const mergedPresent = mergedRecords.filter(r => r.isPresent).length;
+      updateAttendance(existing.id, {
+        presentCount: mergedPresent,
+        absentCount: mergedRecords.length - mergedPresent,
+        records: mergedRecords
+      });
+    } else {
+      addAttendance({
+        sessionId: String(sessionId),
+        isPlatform,
+        date,
+        presentCount,
+        absentCount,
+        records
+      });
+    }
     
     alert('تم حفظ الغياب بنجاح');
     navigate(isPlatform ? `/platform-sessions/${sessionId}/attendance` : `/sessions/${sessionId}/attendance`);

@@ -353,4 +353,38 @@ export const shariaNewsAPI = {
   bulkImport: (items) => apiCall('/sharianews/bulk-import', { method: 'POST', body: { items } })
 };
 
+// Holidays API (إجازات المنصة)
+export const holidaysAPI = {
+  getAll: () => apiCall('/holidays'),
+  create: (data) => apiCall('/holidays', { method: 'POST', body: data }),
+  update: (id, data) => apiCall(`/holidays/${id}`, { method: 'PUT', body: data }),
+  delete: (id) => apiCall(`/holidays/${id}`, { method: 'DELETE' }),
+  bulkImport: (items) => apiCall('/holidays/bulk-import', { method: 'POST', body: { items } })
+};
 
+// Announcements API (التعليمات والإعلانات)
+export const announcementsAPI = {
+  getAll: () => apiCall('/announcements'),
+  create: (data) => apiCall('/announcements', { method: 'POST', body: data }),
+  update: (id, data) => apiCall(`/announcements/${id}`, { method: 'PUT', body: data }),
+  delete: (id) => apiCall(`/announcements/${id}`, { method: 'DELETE' }),
+  bulkImport: (items) => apiCall('/announcements/bulk-import', { method: 'POST', body: { items } })
+};
+
+// Announcement Replies API (ردود الدارسين على الإعلانات)
+export const announcementRepliesAPI = {
+  getAll: () => apiCall('/announcementreplies'),
+  create: (data) => apiCall('/announcementreplies', { method: 'POST', body: data }),
+  update: (id, data) => apiCall(`/announcementreplies/${id}`, { method: 'PUT', body: data }),
+  delete: (id) => apiCall(`/announcementreplies/${id}`, { method: 'DELETE' }),
+  bulkImport: (items) => apiCall('/announcementreplies/bulk-import', { method: 'POST', body: { items } })
+};
+
+// Staff Attendances API (حضور المحفظين والمنسقين)
+export const staffAttendancesAPI = {
+  getAll: () => apiCall('/staffattendances'),
+  create: (data) => apiCall('/staffattendances', { method: 'POST', body: data }),
+  update: (id, data) => apiCall(`/staffattendances/${id}`, { method: 'PUT', body: data }),
+  delete: (id) => apiCall(`/staffattendances/${id}`, { method: 'DELETE' }),
+  bulkImport: (items) => apiCall('/staffattendances/bulk-import', { method: 'POST', body: { items } })
+};

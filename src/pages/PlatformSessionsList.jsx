@@ -6,7 +6,7 @@ import { useAppData } from '../context/AppDataContext';
 import { exportToXLSX, importFromXLSX } from '../utils/xlsxHelper';
 import { filterSessionsForUser } from '../utils/userScopeHelper';
 import { countriesList } from '../data/countries';
-import JitsiMeeting from '../components/JitsiMeeting';
+import { getJoinState, useNow, formatReportText } from '../utils/sessionHelpers';
 
 function PlatformSessionsList() {
   const { 
@@ -19,10 +19,15 @@ function PlatformSessionsList() {
     platformCoordinators = [],
     platformMohfezs = [],
     platformStudents = [],
-    users = []
+    users = [],
+    holidays = [],
+    sessionReports = [],
+    recordSessionJoin
   } = useAppData();
   const importRef = useRef(null);
   const [searchParams] = useSearchParams();
+  const now = useNow(30000);
+  const [expandedReports, setExpandedReports] = useState({});
   
   // Get current user and role
   const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
@@ -33,7 +38,42 @@ function PlatformSessionsList() {
   const [filterRowaq, setFilterRowaq] = useState('');
   const [filterStudentType, setFilterStudentType] = useState('');
   const [filterActiveNow, setFilterActiveNow] = useState(searchParams.get('active') === 'true');
-  const [activeMeeting, setActiveMeeting] = useState(null);
+
+  // زر الدخول للحلقة: يُفعَّل قبل الموعد بربع ساعة ويتوقف مع انتهاء وقت الحلقة (الأدمن مستثنى)
+  const renderJoinButton = (s) => {
+    const joinState = getJoinState(s, holidays, now);
+    const canJoin = role === 'admin' || joinState.open;
+    const baseStyle = {
+      display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '4px',
+      textDecoration: 'none', fontSize: '12px', fontWeight: 'bold', border: 'none', fontFamily: 'inherit',
+      color: 'white', backgroundColor: canJoin ? '#10b981' : '#6b7280',
+      cursor: canJoin ? 'pointer' : 'not-allowed', opacity: canJoin ? 1 : 0.7
+    };
+    const isEmbedded = s.stream_type === 'embedded';
+    const Icon = isEmbedded ? Play : Video;
+    if (!canJoin) {
+      return (
+        <button type="button" disabled title={joinState.reason} style={baseStyle}>
+          <Icon size={14}/> الدخول للحلقة
+        </button>
+      );
+    }
+    if (isEmbedded) {
+      // البث المدمج يُفتح في تبويب جديد (يتم تسجيل الحضور داخل صفحة البث)
+      return (
+        <button type="button" title="الدخول للحلقة" style={baseStyle}
+          onClick={() => window.open(`/live/${s.id}`, '_blank')}>
+          <Icon size={14}/> الدخول للحلقة
+        </button>
+      );
+    }
+    return (
+      <a href={s.teams_link} target="_blank" rel="noopener noreferrer" title="الدخول للحلقة" style={baseStyle}
+        onClick={() => recordSessionJoin(s, currentUser)}>
+        <Icon size={14}/> الدخول للحلقة
+      </a>
+    );
+  };
 
   const formatTimeTo12Hour = (timeStr) => {
     if (!timeStr) return '';
@@ -140,6 +180,66 @@ function PlatformSessionsList() {
     }
     e.target.value = '';
   };
+
+  // عرض الدارس: تقرير حلقته فقط في شكل نص منسق يُفرَّغ تلقائياً من تقرير المحفظ
+  if (isStudent && hasPermission('sessions', 'view')) {
+    const reportBoxStyle = {
+      whiteSpace: 'pre-wrap', lineHeight: 2, background: 'var(--bg-secondary)',
+      border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '14px 16px', margin: 0,
+      fontFamily: 'inherit', fontSize: 15, direction: 'rtl', textAlign: 'right'
+    };
+    return (
+      <div className="management-page">
+        <div className="page-header">
+          <div className="title-section">
+            <h2>تقرير الحلقة</h2>
+            <p>آخر تقرير سجّله المحفظ لحلقتك</p>
+          </div>
+        </div>
+        {scopedSessions.length === 0 ? (
+          <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>لا توجد حلقة مسجلة لك.</div>
+        ) : scopedSessions.map(s => {
+          const reports = sessionReports
+            .filter(r => String(r.sessionId) === String(s.id) && !!r.isPlatform)
+            .sort((a, b) => String(b.date).localeCompare(String(a.date)) || (parseInt(b.sessionNum, 10) || 0) - (parseInt(a.sessionNum, 10) || 0));
+          const latest = reports[0];
+          const older = reports.slice(1);
+          const showOlder = !!expandedReports[s.id];
+          return (
+            <div key={s.id} className="box-card" style={{ padding: 20, marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
+                <div>
+                  <h3 style={{ fontSize: 17, marginBottom: 4 }}>حلقة {s.session_no}</h3>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                    المحفظ: {s.mohfez || '-'} • {(s.workDays || []).join('، ')} • {formatTimeTo12Hour(s.time_start)} - {formatTimeTo12Hour(s.time_end)}
+                  </div>
+                </div>
+                {(s.stream_type === 'embedded' || s.teams_link) && renderJoinButton(s)}
+              </div>
+              {latest ? (
+                <>
+                  <pre style={reportBoxStyle}>{formatReportText(latest, s)}</pre>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+                    <button className="btn btn-outline" onClick={() => navigator.clipboard?.writeText(formatReportText(latest, s))}>نسخ التقرير</button>
+                    {older.length > 0 && (
+                      <button className="btn btn-outline" onClick={() => setExpandedReports(p => ({ ...p, [s.id]: !p[s.id] }))}>
+                        {showOlder ? 'إخفاء التقارير السابقة' : `التقارير السابقة (${older.length})`}
+                      </button>
+                    )}
+                  </div>
+                  {showOlder && older.map(r => (
+                    <pre key={r.id} style={{ ...reportBoxStyle, marginTop: 10 }}>{formatReportText(r, s)}</pre>
+                  ))}
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20 }}>لم يتم تسجيل تقرير لهذه الحلقة بعد.</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   if (!hasPermission('sessions', 'view')) {
     return (
@@ -294,15 +394,7 @@ function PlatformSessionsList() {
                     {hasPermission('sessions', 'delete') && (
                       <button className="action-icon delete" title="حذف" onClick={() => deletePlatformSession(s.id)}><Trash2 size={16}/></button>
                     )}
-                    {s.stream_type === 'embedded' ? (
-                      <button onClick={() => setActiveMeeting({ id: s.id, title: `حلقة ${s.session_no}`, teacher: s.mohfez, roomName: `Rowaq-Platform-Live-${s.id}` })} title="الدخول للحلقة" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#10b981', color: 'white', padding: '6px 12px', borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: 'bold', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                        <Play size={14}/> الدخول للحلقة
-                      </button>
-                    ) : s.teams_link ? (
-                      <a href={s.teams_link} target="_blank" rel="noopener noreferrer" title="الدخول للحلقة" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#10b981', color: 'white', padding: '6px 12px', borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: 'bold' }}>
-                        <Video size={14}/> الدخول للحلقة
-                      </a>
-                    ) : null}
+                    {s.stream_type === 'embedded' || s.teams_link ? renderJoinButton(s) : null}
                   </td>
                 </tr>
               ))
@@ -310,14 +402,6 @@ function PlatformSessionsList() {
           </tbody>
         </table>
       </div>
-      {activeMeeting && (
-        <JitsiMeeting 
-          meeting={activeMeeting}
-          currentUser={currentUser}
-          onClose={() => setActiveMeeting(null)}
-          loggedInStudent={null}
-        />
-      )}
     </div>
   );
 }

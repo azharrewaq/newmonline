@@ -36,6 +36,9 @@ import PublicQuran from './pages/PublicQuran';
 import PublicIslamicStudies from './pages/PublicIslamicStudies';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import PlatformAnnouncements from './pages/PlatformAnnouncements';
+import PlatformHolidays from './pages/PlatformHolidays';
+import LiveSession from './pages/LiveSession';
 
 const initialDashboardData = {
   stats: [
@@ -70,6 +73,8 @@ function DashboardLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  const isStudentUser = currentUser.role === 'student';
+
   return (
     <div className="app-layout">
       <Sidebar isOpen={isSidebarOpen} toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
@@ -78,8 +83,8 @@ function DashboardLayout() {
         <Header toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
         <div className="content-scroll-area" style={{ overflowY: 'auto', flex: 1, padding: '20px' }}>
           <Routes>
-            <Route path="/" element={<Navigate to="/platform-dashboard" replace />} />
-            <Route path="/platform-dashboard" element={<PlatformDashboard />} />
+            <Route path="/" element={<Navigate to={isStudentUser ? '/platform-sessions' : '/platform-dashboard'} replace />} />
+            <Route path="/platform-dashboard" element={isStudentUser ? <Navigate to="/platform-sessions" replace /> : <PlatformDashboard />} />
             
             <Route path="/platform-top-management" element={<PlatformTopManagementList />} />
             <Route path="/platform-top-management/create" element={<PlatformTopManagementCreate />} />
@@ -104,6 +109,8 @@ function DashboardLayout() {
             <Route path="/coordinator-workdays-report" element={<CoordinatorWorkdaysReport />} />
             <Route path="/student-absence-report" element={<StudentAbsenceReport />} />
             
+            <Route path="/platform-announcements" element={<PlatformAnnouncements />} />
+            <Route path="/platform-holidays" element={<PlatformHolidays />} />
             <Route path="/users" element={<UsersList />} />
             <Route path="/permissions" element={<PermissionsManagement />} />
             <Route path="/settings" element={<Settings />} />
@@ -124,6 +131,7 @@ function App() {
           <Route path="/quran" element={<PublicQuran />} />
           <Route path="/IslamicStudies" element={<PublicIslamicStudies />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/live/:id" element={<LiveSession />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />
           <Route path="/*" element={<DashboardLayout />} />
         </Routes>

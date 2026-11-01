@@ -4,6 +4,7 @@ import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
 import TimePicker from '../components/TimePicker';
 import { countriesList } from '../data/countries';
+import { isPlatformManager } from '../utils/announcementHelpers';
 
 const workDaysList = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
 
@@ -19,12 +20,13 @@ function PlatformSessionsCreate() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('id');
+  const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
   const isEditing = !!sessionId;
   
   const [form, setForm] = useState({
     session_no: '', rowaq: '', level: '', mohfez: '', coordinator: '',
     student_type: '', attendance_type: 'عن بعد', time_start: '', time_end: '',
-    workDays: [], countries: [], stream_type: 'external', teams_link: ''
+    workDays: [], countries: [], stream_type: 'external', teams_link: '', start_session_no: ''
   });
 
   const [countrySearch, setCountrySearch] = useState('');
@@ -68,7 +70,8 @@ function PlatformSessionsCreate() {
           workDays: sessionToEdit.workDays || [],
           countries: sessionToEdit.countries || [],
           stream_type: sessionToEdit.stream_type || 'external',
-          teams_link: sessionToEdit.teams_link || ''
+          teams_link: sessionToEdit.teams_link || '',
+          start_session_no: sessionToEdit.start_session_no || ''
         });
       }
     }
@@ -102,6 +105,14 @@ function PlatformSessionsCreate() {
           <label>رقم الحلقة <span className="req">*</span></label>
           <input name="session_no" type="text" className="form-input" placeholder="أدخل رقم الحلقة" value={form.session_no} onChange={handleChange} />
         </div>
+
+        {isPlatformManager(currentUser) && (
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label>رقم جلسة البدء للحلقة</label>
+            <input name="start_session_no" type="number" min="1" className="form-input" placeholder="1 (للحلقات الجارية فعلاً: أدخل رقم الجلسة التي ستبدأ منها التقارير)" value={form.start_session_no} onChange={handleChange} />
+            <small style={{ color: 'var(--text-muted)' }}>يُرقَّم تقرير كل جلسة تلقائياً بدءاً من هذا الرقم.</small>
+          </div>
+        )}
 
         <div className="form-grid" style={{ marginBottom: '20px', gridTemplateColumns: 'repeat(2, 1fr)' }}>
           {/* الدول */}

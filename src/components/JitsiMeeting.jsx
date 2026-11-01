@@ -14,7 +14,7 @@ function JitsiMeeting({ meeting, currentUser, onClose, addLectureAccessLog, upda
   const cleanRoomName = (meeting.roomName || `Rowaq-Sharia-Live-${meeting.id}`)
     .replace(/[^a-zA-Z0-9-_]/g, ''); // Jitsi room names should be alphanumeric/dashes
 
-  const isTeacher = currentUser?.role === 'sharia_teacher' || currentUser?.role === 'admin';
+  const isTeacher = ['sharia_teacher', 'admin', 'platform_mohfez', 'platform_coordinator'].includes(currentUser?.role);
 
   useEffect(() => {
     // 1. Check if external_api.js is loaded, otherwise load it

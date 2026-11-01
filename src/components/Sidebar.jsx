@@ -2,11 +2,12 @@ import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Home, Users, FileText, Calendar, GitBranch, 
-  BookOpen, Building, MapPin, UserPlus, FilePlus, Settings, User, LogOut, Shield, ArrowRightLeft, BookOpen as BookIcon, Award, Video, Newspaper, Archive, Clock, UserX
+  BookOpen, Building, MapPin, UserPlus, FilePlus, Settings, User, LogOut, Shield, ArrowRightLeft, BookOpen as BookIcon, Award, Video, Newspaper, Archive, Clock, UserX, Megaphone, CalendarOff
 } from 'lucide-react';
 
 import './Sidebar.css';
 import { useAppData } from '../context/AppDataContext';
+import { useAnnouncementNotifications } from '../utils/announcementHelpers';
 
 const menuGroups = [
   {
@@ -64,6 +65,14 @@ const menuGroups = [
       { name: 'الحلقات', icon: GitBranch, path: '/platform-sessions' },
       { name: 'الدارسين', icon: BookOpen, path: '/platform-students' },
       { name: 'المتقدمين الجدد', icon: UserPlus, path: '/platform-applicants' },
+    ]
+  },
+  {
+    title: 'التواصل والإجازات',
+    isPlatformOnly: true,
+    items: [
+      { name: 'التعليمات والإعلانات', icon: Megaphone, path: '/platform-announcements' },
+      { name: 'إجازات المنصة', icon: CalendarOff, path: '/platform-holidays' },
     ]
   },
   {
@@ -133,11 +142,20 @@ function Sidebar({ isOpen, toggleSidebar }) {
   }
 
   const { shariaTeachers = [], mohfezs = [] } = useAppData();
+  const { count: notifCount } = useAnnouncementNotifications();
   const nationalId = currentUser ? String(currentUser.national_id || currentUser.username || '').trim() : '';
   const isAlsoShariaTeacher = shariaTeachers.some(t => String(t.nationalId || '').trim() === nationalId);
   const isAlsoMohfez = mohfezs.some(m => String(m.national_id || '').trim() === nationalId);
 
   const isPathAllowed = (path, userRole) => {
+    // صفحة الإعلانات: لإدارة المنصة والدارسين والمحفظين والمنسقين
+    if (path === '/platform-announcements') {
+      return ['admin', 'platform_admin', 'platform_supervisor', 'platform_coordinator', 'platform_mohfez', 'student'].includes(userRole);
+    }
+    // صفحة الإجازات: للإدارة فقط
+    if (path === '/platform-holidays') {
+      return ['admin', 'platform_admin'].includes(userRole);
+    }
     // 10. sharia_student (دارس علوم شرعية)
     if (userRole === 'sharia_student') {
       const allowed = [
@@ -241,7 +259,7 @@ function Sidebar({ isOpen, toggleSidebar }) {
 
     // 4. student
     if (userRole === 'student') {
-      return ['/platform-dashboard', '/platform-sessions'].includes(path);
+      return ['/platform-sessions'].includes(path);
     }
 
     // 5. rowaq_admin / rowaq_manager
@@ -414,6 +432,9 @@ function Sidebar({ isOpen, toggleSidebar }) {
                   >
                     <Icon size={18} className="menu-icon" />
                     <span>{item.name}</span>
+                    {item.path === '/platform-announcements' && notifCount > 0 && (
+                      <span style={{ marginRight: 'auto', background: '#ef4444', color: '#fff', borderRadius: 10, padding: '0 7px', fontSize: 11, fontWeight: 'bold' }}>{notifCount}</span>
+                    )}
                   </NavLink>
                 );
               })}

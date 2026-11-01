@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { Menu, Bell, Sun, Moon, Settings, Check, Globe } from 'lucide-react';
 import './Header.css';
 import { useAppData } from '../context/AppDataContext';
+import { useAnnouncementNotifications } from '../utils/announcementHelpers';
 
 function Header({ toggleSidebar }) {
   const { theme, toggleTheme } = useAppData();
+  const { count: notifCount, manager } = useAnnouncementNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [currentLang, setCurrentLang] = useState('ar');
@@ -145,6 +147,25 @@ function Header({ toggleSidebar }) {
         </div>
 
 
+
+        {/* Announcements notifications */}
+        {currentUser && ['admin', 'platform_admin', 'platform_supervisor', 'platform_coordinator', 'platform_mohfez', 'student'].includes(currentUser.role) && (
+          <Link
+            to="/platform-announcements"
+            className="icon-btn"
+            style={{ position: 'relative' }}
+            title={notifCount > 0 ? (manager ? `${notifCount} رد جديد على الإعلانات` : `${notifCount} إعلان جديد`) : 'التعليمات والإعلانات'}
+          >
+            <Bell size={20} />
+            {notifCount > 0 && (
+              <span style={{
+                position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff',
+                borderRadius: 10, minWidth: 18, height: 18, fontSize: 11, fontWeight: 'bold',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px'
+              }}>{notifCount}</span>
+            )}
+          </Link>
+        )}
 
         {/* Settings Gear */}
         <Link to="/settings" className="icon-btn settings-btn" title="إعدادات النظام">
