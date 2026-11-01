@@ -181,6 +181,7 @@ function CoordinatorRow({ row, index, onAssignSession, platformCoordinators, can
                     <th style={{ padding: '8px 10px', textAlign: 'center' }}>عدد الحضور</th>
                     <th style={{ padding: '8px 10px', textAlign: 'center' }}>مدة الحلقة</th>
                     <th style={{ padding: '8px 10px', textAlign: 'center' }}>نصيبها من أيام العمل</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>دخول المنسق</th>
                     {canEdit && <th style={{ padding: '8px 10px', textAlign: 'center' }}>المنسق المشرف</th>}
                   </tr>
                 </thead>
@@ -214,6 +215,9 @@ function CoordinatorRow({ row, index, onAssignSession, platformCoordinators, can
                           <td style={{ padding: '8px 10px', textAlign: 'center', color: '#10b981', fontWeight: 'bold' }}>
                             {dayPortion} يوم ({s.duration} س)
                           </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center', fontSize: '12px', color: s.coordinatorJoinedAt ? '#10b981' : 'var(--text-muted)' }}>
+                            {s.coordinatorJoinedAt ? new Date(s.coordinatorJoinedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : 'غير مسجل'}
+                          </td>
                           {canEdit && (
                             <td style={{ padding: '6px 10px', textAlign: 'center' }}>
                               <select 
@@ -235,12 +239,13 @@ function CoordinatorRow({ row, index, onAssignSession, platformCoordinators, can
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: '2px solid var(--accent-primary)', fontWeight: 'bold', color: 'var(--accent-primary)' }}>
-                    <td colSpan="6" style={{ padding: '10px', textAlign: 'center' }}>المجموع الكلي</td>
+                    <td colSpan="6" style={{ padding: '10px', textAlign: 'center' }}>المجموع الكلي (أيام دخول المنسق: {row.joinedCount || 0} من {row.totalSessions})</td>
                     <td style={{ textAlign: 'center' }}>{row.sessions.reduce((s, r) => s + r.presentCount, 0)} دارس</td>
                     <td style={{ textAlign: 'center' }}>{row.totalHours.toFixed(1)} ساعة</td>
                     <td style={{ textAlign: 'center', color: '#10b981', fontSize: '13px' }}>
                       {formatWorkDays(row.workDays)}
                     </td>
+                    <td></td>
                     {canEdit && <td></td>}
                   </tr>
                 </tfoot>
@@ -316,6 +321,7 @@ function CoordinatorWorkdaysReport() {
     platformStudents, 
     platformCoordinators, 
     attendances, 
+    staffAttendances = [],
     users, 
     hasPermission,
     updatePlatformSession 
@@ -436,6 +442,12 @@ function CoordinatorWorkdaysReport() {
       const presentCount = active.filter(r => r.isPresent).length;
       const duration     = calcDuration(presentCount, session.rowaq, session.level);
 
+      // حضور المنسق المسجل تلقائياً عند دخوله رابط الحلقة في نفس اليوم
+      const attDay = (att.date || '').replace(/\//g, '-');
+      const joined = staffAttendances.find(sa =>
+        String(sa.sessionId) === String(att.sessionId) && sa.role === 'platform_coordinator' && sa.date === attDay
+      );
+
       if (!map[coordName]) {
         // البحث عن معلومات المنسق الإضافية
         const coordInfo = platformCoordinators.find(c => normalizeAr(c.name) === normalizeAr(coordName));
@@ -461,9 +473,11 @@ function CoordinatorWorkdaysReport() {
         date: att.date,
         presentCount,
         duration,
+        coordinatorJoinedAt: joined ? joined.joinedAt : null,
       });
 
       map[coordName].totalSessions++;
+      if (joined) map[coordName].joinedCount = (map[coordName].joinedCount || 0) + 1;
       map[coordName].totalHours += duration;
       // كل 3 ساعات = 1 يوم عمل
       map[coordName].workDays = map[coordName].totalHours / 3;
@@ -474,7 +488,7 @@ function CoordinatorWorkdaysReport() {
       if (b.isUnassigned) return -1;
       return a.coordinator.localeCompare(b.coordinator, 'ar');
     });
-  }, [attendances, platformSessions, platformStudents, platformCoordinators, users, selYear, selMonth, selCoord, selRowaq, selMohfez, isPlatformCoordinator, currentUser]);
+  }, [attendances, staffAttendances, platformSessions, platformStudents, platformCoordinators, users, selYear, selMonth, selCoord, selRowaq, selMohfez, isPlatformCoordinator, currentUser]);
 
   // إجماليات عامة
   const grandHours    = reportData.reduce((s, r) => s + r.totalHours, 0);
@@ -504,6 +518,7 @@ function CoordinatorWorkdaysReport() {
       'إجمالي الحلقات المشرف عليها': c.totalSessions,
       'إجمالي الساعات': Number(c.totalHours.toFixed(1)),
       'أيام العمل المحتسبة (الساعات ÷ 3)': Number(c.workDays.toFixed(2)),
+      'أيام دخول المنسق': c.joinedCount || 0,
     }));
 
     // سطر المجموع النهائي
@@ -515,6 +530,7 @@ function CoordinatorWorkdaysReport() {
       'إجمالي الحلقات المشرف عليها': grandSessions,
       'إجمالي الساعات': Number(grandHours.toFixed(1)),
       'أيام العمل المحتسبة (الساعات ÷ 3)': Number(grandWorkDays.toFixed(2)),
+      'أيام دخول المنسق': reportData.reduce((s, r) => s + (r.joinedCount || 0), 0),
     });
 
     // 2. ورقة تفاصيل كل حلقة للمنسق
@@ -535,6 +551,7 @@ function CoordinatorWorkdaysReport() {
           'مدة الحلقة المستحقة': bd.label,
           'الساعات': s.duration,
           'نصيب الحلقة من أيام العمل (المدة ÷ 3)': Number((s.duration / 3).toFixed(2)),
+          'دخول المنسق للحلقة': s.coordinatorJoinedAt ? new Date(s.coordinatorJoinedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : 'غير مسجل',
         });
       });
     });

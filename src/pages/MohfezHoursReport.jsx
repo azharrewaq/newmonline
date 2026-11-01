@@ -180,7 +180,7 @@ function MohfezRow({ row, idx }) {
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
                 <thead>
                   <tr style={{ color:'var(--text-muted)', borderBottom:'1px solid var(--border-subtle)' }}>
-                    {['التاريخ','رقم الحلقة','الرواق','المستوى','عدد الحضور','مدة الجلسة'].map(h => (
+                    {['التاريخ','رقم الحلقة','الرواق','المستوى','عدد الحضور','مدة الجلسة','دخول المحفظ'].map(h => (
                       <th key={h} style={{ padding:'6px 10px', textAlign:'center' }}>{h}</th>
                     ))}
                   </tr>
@@ -206,13 +206,16 @@ function MohfezRow({ row, idx }) {
                               {bd.label}
                             </span>
                           </td>
+                          <td style={{ padding:'6px 10px', textAlign:'center', fontSize:'12px', color: s.mohfezJoinedAt ? '#10b981' : 'var(--text-muted)' }}>
+                            {s.mohfezJoinedAt ? new Date(s.mohfezJoinedAt).toLocaleTimeString('ar-EG', { hour:'2-digit', minute:'2-digit' }) : 'غير مسجل'}
+                          </td>
                         </tr>
                       );
                     })}
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop:'2px solid var(--accent-primary)', fontWeight:'bold', color:'var(--accent-primary)' }}>
-                    <td colSpan="4" style={{ padding:'8px 10px', textAlign:'center' }}>المجموع</td>
+                    <td colSpan="4" style={{ padding:'8px 10px', textAlign:'center' }}>المجموع (أيام دخول المحفظ: {row.joinedCount || 0} من {row.totalSessions})</td>
                     <td style={{ textAlign:'center' }}>{row.sessions.reduce((s,r)=>s+r.presentCount,0)} دارس</td>
                     <td style={{ textAlign:'center' }}>{row.totalHours.toFixed(1)} ساعة</td>
                   </tr>
@@ -235,6 +238,7 @@ function MohfezHoursReport() {
     platformMohfezs = [],
     users = [], 
     attendances, 
+    staffAttendances = [],
     hasPermission 
   } = useAppData();
 
@@ -313,6 +317,11 @@ function MohfezHoursReport() {
       });
       const presentCount = active.filter(r => r.isPresent).length;
       const duration     = calcDuration(presentCount, session.rowaq, session.level);
+      // حضور المحفظ المسجل تلقائياً عند دخوله رابط الحلقة في نفس اليوم
+      const attDay = (att.date || '').replace(/\//g, '-');
+      const joined = staffAttendances.find(sa =>
+        String(sa.sessionId) === String(att.sessionId) && sa.role === 'platform_mohfez' && sa.date === attDay
+      );
 
       if (!map[mohfezName]) {
         map[mohfezName] = { mohfez: mohfezName, sessions: [], totalSessions: 0, totalHours: 0 };
@@ -320,14 +329,16 @@ function MohfezHoursReport() {
       map[mohfezName].sessions.push({
         date: att.date, sessionNo: session.session_no,
         rowaq: session.rowaq, level: session.level,
-        presentCount, duration
+        presentCount, duration,
+        mohfezJoinedAt: joined ? joined.joinedAt : null
       });
       map[mohfezName].totalSessions++;
       map[mohfezName].totalHours += duration;
+      if (joined) map[mohfezName].joinedCount = (map[mohfezName].joinedCount || 0) + 1;
     });
 
     return Object.values(map).sort((a, b) => a.mohfez.localeCompare(b.mohfez, 'ar'));
-  }, [attendances, platformSessions, platformStudents, selYear, selMonth, selMohfez, selRowaq, isPlatformMohfez, isPlatformCoordinator, currentUser, platformCoordinators, users]);
+  }, [attendances, staffAttendances, platformSessions, platformStudents, selYear, selMonth, selMohfez, selRowaq, isPlatformMohfez, isPlatformCoordinator, currentUser, platformCoordinators, users]);
 
   const grandHours    = reportData.reduce((s, r) => s + r.totalHours, 0);
   const grandSessions = reportData.reduce((s, r) => s + r.totalSessions, 0);
@@ -341,6 +352,7 @@ function MohfezHoursReport() {
       'اسم المحفظ': m.mohfez,
       'إجمالي عدد الحلقات': m.totalSessions,
       'إجمالي الساعات': Number(m.totalHours.toFixed(1)),
+      'أيام دخول المحفظ': m.joinedCount || 0,
     }));
 
     // إضافة سطر المجموع النهائي في نهاية الملخص
@@ -367,6 +379,7 @@ function MohfezHoursReport() {
           'عدد الحضور': s.presentCount,
           'المدة المستحقة': bd.label,
           'الساعات': s.duration,
+          'دخول المحفظ للحلقة': s.mohfezJoinedAt ? new Date(s.mohfezJoinedAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : 'غير مسجل',
         });
       });
     });
