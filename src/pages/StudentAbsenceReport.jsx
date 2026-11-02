@@ -233,9 +233,11 @@ function StudentRow({ row, index }) {
                 <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)' }}>
                   سجل حضور وغياب الدارس: {row.studentName} — (حلقة: {row.sessionNo} | منسق: {row.coordinator || '-'})
                 </span>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  الهاتف: {row.phone || '-'} | الرقم القومي/الجواز: {row.passport_no || '-'}
-                </span>
+                {(row.phone || row.passport_no) && (
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    الهاتف: {row.phone || '-'} | الرقم القومي/الجواز: {row.passport_no || '-'}
+                  </span>
+                )}
               </div>
 
               {row.history.length === 0 ? (
@@ -403,8 +405,9 @@ function StudentAbsenceReport() {
         studentId: String(st.id),
         studentName: st.name || 'بدون اسم',
         country: st.country || '-',
-        phone: st.phone || '-',
-        passport_no: st.passport_no || st.national_id || '-',
+        // المحفظ لا يطّلع على الهاتف أو رقم الجواز/الهوية الخاص بالدارس
+        phone: isPlatformMohfez ? '' : (st.phone || '-'),
+        passport_no: isPlatformMohfez ? '' : (st.passport_no || st.national_id || '-'),
         sessionId: session.id,
         sessionNo: session.session_no || session.id,
         rowaq: session.rowaq || '-',
@@ -472,7 +475,7 @@ function StudentAbsenceReport() {
       if (searchQuery) {
         const q = normalizeAr(searchQuery);
         const matchName = normalizeAr(item.studentName).includes(q);
-        const matchPhone = String(item.phone).includes(q);
+        const matchPhone = !isPlatformMohfez && String(item.phone).includes(q);
         const matchCountry = normalizeAr(item.country).includes(q);
         const matchSession = String(item.sessionNo).includes(q);
         if (!matchName && !matchPhone && !matchCountry && !matchSession) return false;
@@ -485,7 +488,7 @@ function StudentAbsenceReport() {
       return a.studentName.localeCompare(b.studentName, 'ar');
     });
 
-  }, [attendances, platformStudents, scopedSessions, selYear, selMonth, selSession, selRowaq, selMohfez, selCoord, selStatus, searchQuery]);
+  }, [attendances, platformStudents, scopedSessions, isPlatformMohfez, selYear, selMonth, selSession, selRowaq, selMohfez, selCoord, selStatus, searchQuery]);
 
   // إحصائيات عامة
   const totalStudentsCount = reportData.length;
@@ -732,6 +735,7 @@ function StudentAbsenceReport() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
+            {!isPlatformMohfez && (
             <button 
               className="btn btn-primary" 
               onClick={handleExport} 
@@ -740,6 +744,7 @@ function StudentAbsenceReport() {
             >
               <Download size={15} /> تصدير إكسيل
             </button>
+            )}
             <button 
               className="btn btn-outline" 
               onClick={() => {

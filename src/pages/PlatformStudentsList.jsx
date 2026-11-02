@@ -75,6 +75,7 @@ function PlatformStudentsList() {
   });
 
   const handleExport = () => {
+    if (isPlatformMohfez) return; // المحفظ لا يصدّر بيانات الدارسين (هاتف/جواز)
     const exportData = filtered.map(s => ({
       'الاسم': s.name,
       'الدولة': s.country || '',
@@ -186,10 +187,12 @@ function PlatformStudentsList() {
             <label>الاسم</label>
             <input type="text" className="form-input" placeholder="البحث بالاسم" value={filterName} onChange={e => setFilterName(e.target.value)} />
           </div>
+          {!isPlatformMohfez && (
           <div className="form-group">
             <label>رقم جواز السفر</label>
             <input type="text" className="form-input" placeholder="البحث برقم جواز السفر" value={filterPassportNo} onChange={e => setFilterPassportNo(e.target.value)} />
           </div>
+          )}
           <div className="form-group">
             <label>الدولة</label>
             <select className="form-select" value={filterCountry} onChange={e => setFilterCountry(e.target.value)}>
@@ -245,9 +248,11 @@ function PlatformStudentsList() {
               حذف الجميع
             </button>
           )}
-          <button className="btn btn-outline" onClick={handleExport}>
-            <Download size={16} /> تصدير
-          </button>
+          {!isPlatformMohfez && (
+            <button className="btn btn-outline" onClick={handleExport}>
+              <Download size={16} /> تصدير
+            </button>
+          )}
         </div>
         <div className="table-stats">النتائج ({filtered.length})</div>
       </div>
