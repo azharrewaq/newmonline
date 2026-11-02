@@ -134,7 +134,7 @@ export const formatReportText = (report, session) => {
   const num = report.sessionNum || session?.session_no || '';
 
   const lines = [];
-  lines.push(`🌷تقرير حلقة (${num})`);
+  lines.push(`🌷تقرير جلسة (${num})`);
   if (country) lines.push(`دولة ${country} 🌷`);
   lines.push(`يوم ${getArabicDayName(report.date)}`);
   lines.push(dateText);
