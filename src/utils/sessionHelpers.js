@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { normalizeArabic } from './userScopeHelper';
+import { getCurriculumData } from './curriculumHelper';
 
 export const JOIN_EARLY_MINUTES = 15;
 
@@ -97,29 +98,74 @@ export const getNextSessionNumber = (session, sessionReports = [], isPlatform = 
   return Math.max(Math.max(...nums) + 1, startNo);
 };
 
-const rangeText = (sec) => {
-  if (!sec || !sec.fromSurah) return null;
-  return `من سورة ${sec.fromSurah} آية ${sec.fromAyah || '-'} إلى سورة ${sec.toSurah || '-'} آية ${sec.toAyah || '-'}`;
+const hasRange = (sec) => !!(sec && sec.fromSurah);
+
+// تنسيق نطاق (تسميع / تصحيح) على نموذج: سورة X / من الايه رقم (a) / الى الايه رقم (b)
+const recitationBlock = (sec) => {
+  if (!hasRange(sec)) return 'لا يوجد';
+  if (!sec.toSurah || sec.toSurah === sec.fromSurah) {
+    return `سورة ${sec.fromSurah}\nمن الايه رقم (${sec.fromAyah || '-'})\nالى الايه رقم (${sec.toAyah || '-'})`;
+  }
+  return `من سورة ${sec.fromSurah} الايه رقم (${sec.fromAyah || '-'})\nالى سورة ${sec.toSurah} الايه رقم (${sec.toAyah || '-'})`;
 };
 
-/** تفريغ تقرير المحفظ إلى نص منسق للدارس */
+// تنسيق نطاق المراجعة: سورة X(a) / الى الايه (b)
+const reviewBlock = (sec) => {
+  if (!hasRange(sec)) return 'لا يوجد';
+  if (!sec.toSurah || sec.toSurah === sec.fromSurah) {
+    return `سورة ${sec.fromSurah}(${sec.fromAyah || '-'})\nالى الايه (${sec.toAyah || '-'})`;
+  }
+  return `سورة ${sec.fromSurah}(${sec.fromAyah || '-'})\nالى سورة ${sec.toSurah} (${sec.toAyah || '-'})`;
+};
+
+const studentWord = (session) => {
+  const t = session?.student_type || '';
+  if (t.includes('أطفال') || t.includes('اطفال')) return 'الطفل';
+  if (t.includes('نساء')) return 'الدارسة';
+  return 'الدارس';
+};
+
+/** تفريغ تقرير المحفظ إلى نص منسق للدارس (على نموذج الحلقات المعتمد) */
 export const formatReportText = (report, session) => {
   if (!report) return '';
+  const [y, m, d] = String(report.date || '').replace(/\//g, '-').split('-').map(Number);
+  const dateText = y ? `${y}/${m}/${d}م` : '';
+  const country = (session?.countries || []).join('، ');
+  const num = report.sessionNum || session?.session_no || '';
+
   const lines = [];
-  lines.push(`📋 تقرير الحلقة ${session?.session_no || ''}${report.sessionNum ? ` - الجلسة رقم ${report.sessionNum}` : ''}`);
-  lines.push(`📅 التاريخ: ${getArabicDayName(report.date)} ${String(report.date || '').replace(/-/g, '/')}`);
-  if (session?.mohfez) lines.push(`👤 المحفظ: ${session.mohfez}`);
+  lines.push(`🌷تقرير حلقة (${num})`);
+  if (country) lines.push(`دولة ${country} 🌷`);
+  lines.push(`يوم ${getArabicDayName(report.date)}`);
+  lines.push(dateText);
   lines.push('');
-  const sections = [
-    ['📖 الحفظ', report.memorization],
-    ['🔁 التسميع', report.review],
-    ['🔄 مراجعة الماضي القريب', report.recentReview],
-    ['🕰️ مراجعة الماضي البعيد', report.distantReview],
-  ];
-  sections.forEach(([title, sec]) => {
-    const t = rangeText(sec);
-    if (t) lines.push(`${title}: ${t}`);
-  });
+  lines.push('👈التسميع: ');
+  lines.push(recitationBlock(report.review));
+  lines.push('');
+  lines.push('👈التصحيح: ');
+  lines.push(recitationBlock(report.memorization));
+  lines.push('');
+  lines.push('👈المراجعة القريبة: ');
+  lines.push(reviewBlock(report.recentReview));
+  lines.push('');
+  lines.push('👈المراجعة البعيدة: ');
+  lines.push(reviewBlock(report.distantReview));
+  lines.push('');
+  lines.push('✍️✍️✍️✍️✍️');
+
+  // المطلوب في الحلقة القادمة: التسميع = ما تم تصحيحه اليوم، والمراجعة من الجلسة التالية في المنهج
+  const curriculum = getCurriculumData(session?.rowaq, session?.level);
+  const nextEntry = curriculum ? curriculum.find(c => c.session === (parseInt(report.sessionNum, 10) || 0) + 1) : null;
+  lines.push(`المطلوب من ${studentWord(session)} الحلقة القادمة: `);
+  lines.push('✍️التسميع:');
+  lines.push(recitationBlock(report.memorization));
+  lines.push('');
+  lines.push('✍️المراجعة القريبة:');
+  lines.push(reviewBlock(nextEntry?.recentReview));
+  lines.push('');
+  lines.push('✍️المراجعة البعيدة:');
+  lines.push(reviewBlock(nextEntry?.distantReview));
+  lines.push('🤲دمتم موفقين🤲');
   return lines.join('\n');
 };
 
@@ -141,3 +187,4 @@ export const getStudentsOfSession = (session, platformStudents = []) =>
     (s.session_id && String(s.session_id) === String(session?.id)) ||
     String(s.session_no) === String(session?.session_no)
   ));
+

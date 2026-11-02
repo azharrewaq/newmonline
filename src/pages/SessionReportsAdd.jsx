@@ -7,61 +7,7 @@ import { isUserAllowedSession } from '../utils/userScopeHelper';
 import { getHolidayForDate, getNextSessionNumber } from '../utils/sessionHelpers';
 import { isPlatformManager } from '../utils/announcementHelpers';
 
-import { children1Curriculum } from '../data/children1';
-import { children2Curriculum } from '../data/children2';
-import { children3Curriculum } from '../data/children3';
-import { children4Curriculum } from '../data/children4';
-import { children5Curriculum } from '../data/children5';
-import { children6Curriculum } from '../data/children6';
-import { children7Curriculum } from '../data/children7';
-import { children8Curriculum } from '../data/children8';
-import { children9Curriculum } from '../data/children9';
-import { children10Curriculum } from '../data/children10';
-
-import { seniorsOneYearCurriculum } from '../data/seniors_one_year';
-import { seniorsTwoYearsCurriculum } from '../data/seniors_two_years';
-import { seniorsThreeYearsCurriculum } from '../data/seniors_three_years';
-import { seniorsFourYearsFatihahCurriculum } from '../data/seniors_four_years_fatihah';
-import { seniorsFourYearsNasCurriculum } from '../data/seniors_four_years_nas';
-import { seniorsFiveYearsFatihahCurriculum } from '../data/seniors_five_years_fatihah';
-import { seniorsFiveYearsNasCurriculum } from '../data/seniors_five_years_nas';
-
-// Normalize Arabic text: remove hamza variants so الاول === الأول
-const normalizeArabic = (str) => (str || '').trim().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه');
-
-const getCurriculumData = (rowaq, level) => {
-  if (!rowaq || !level) return null;
-  const lvl = normalizeArabic(level);
-  
-  if (rowaq.includes('اطفال') || rowaq.includes('أطفال')) {
-    if (lvl === 'الاول') return children1Curriculum;
-    if (lvl === 'الثاني') return children2Curriculum;
-    if (lvl === 'الثالث') return children3Curriculum;
-    if (lvl === 'الرابع') return children4Curriculum;
-    if (lvl === 'الخامس') return children5Curriculum;
-    if (lvl === 'السادس') return children6Curriculum;
-    if (lvl === 'السابع') return children7Curriculum;
-    if (lvl === 'الثامن') return children8Curriculum;
-    if (lvl === 'التاسع') return children9Curriculum;
-    if (lvl === 'العاشر') return children10Curriculum;
-  } else if (rowaq.includes('كبار')) {
-    // نظام السنة الواحدة
-    if (lvl === normalizeArabic('نظام السنة الواحدة') || lvl === normalizeArabic('السنة الواحدة')) return seniorsOneYearCurriculum;
-    // نظام العامين
-    if (lvl === normalizeArabic('نظام العامين') || lvl === normalizeArabic('عامين')) return seniorsTwoYearsCurriculum;
-    // نظام الثلاث سنوات
-    if (lvl === normalizeArabic('نظام الثلاث سنوات') || lvl === 'ثلاث سنوات') return seniorsThreeYearsCurriculum;
-    // نظام الاربع سنوات من البقرة
-    if (lvl === normalizeArabic('نظام الاربع سنوات ( من سورة البقرة )') || lvl === normalizeArabic('أربع سنوات من البقرة')) return seniorsFourYearsFatihahCurriculum;
-    // نظام الاربع سنوات من الناس
-    if (lvl === normalizeArabic('نظام الاربع سنوات ( من سورة الناس )') || lvl === normalizeArabic('أربع سنوات من الناس')) return seniorsFourYearsNasCurriculum;
-    // نظام الخمس سنوات من البقرة
-    if (lvl === normalizeArabic('نظام الخمس سنوات ( من سورة البقرة )') || lvl === normalizeArabic('خمس سنوات من البقرة') || lvl === normalizeArabic('القرآن الكريم كبار ( نظام الخمس سنوات - من سورة البقرة )')) return seniorsFiveYearsFatihahCurriculum;
-    // نظام الخمس سنوات من الناس
-    if (lvl === normalizeArabic('نظام الخمس سنوات ( من سورة الناس )') || lvl === normalizeArabic('خمس سنوات من الناس')) return seniorsFiveYearsNasCurriculum;
-  }
-  return null;
-};
+import { getCurriculumData, normalizeArabicSimple as normalizeArabic } from '../utils/curriculumHelper';
 
 
 const getArabicDayName = (dateString) => {
