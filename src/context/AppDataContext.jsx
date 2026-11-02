@@ -7,8 +7,9 @@ import {
   platformMohfezsAPI, platformSessionsAPI, platformStudentsAPI, platformApplicantsAPI,
   platformRowaqsAPI, administrationsAPI, rolePermissionsAPI,
   shariaCoursesAPI, shariaBranchesAPI, shariaStudentsAPI, shariaTeachersAPI, shariaLivesAPI, shariaDailyReportsAPI, shariaNewsAPI,
-  holidaysAPI, announcementsAPI, announcementRepliesAPI, staffAttendancesAPI
+  holidaysAPI, announcementsAPI, announcementRepliesAPI, staffAttendancesAPI, substitutionsAPI
 } from '../utils/apiService';
+import { setActiveSubstitutions } from '../utils/userScopeHelper';
 import { findStudentRecord, getStudentsOfSession, toLocalDateStr } from '../utils/sessionHelpers';
 
 const AppDataContext = createContext(null);
@@ -331,6 +332,9 @@ export function AppDataProvider({ children }) {
   const [announcements, setAnnouncements] = useState(() => getFromLocalStorage('announcements', []));
   const [announcementReplies, setAnnouncementReplies] = useState(() => getFromLocalStorage('announcementReplies', []));
   const [staffAttendances, setStaffAttendances] = useState(() => getFromLocalStorage('staffAttendances', []));
+  const [substitutions, setSubstitutions] = useState(() => getFromLocalStorage('substitutions', []));
+  // يُحدَّث أثناء الرسم ليستعمله منطق الصلاحيات (userScopeHelper) في نفس الدورة
+  setActiveSubstitutions(substitutions);
 
   // Platform Dashboard States
   const [platformTopManagement, setPlatformTopManagement] = useState(() => getFromLocalStorage('platformTopManagement', []));
@@ -567,6 +571,7 @@ export function AppDataProvider({ children }) {
         await syncCollection(announcementsAPI, announcements, setAnnouncements, 'announcements');
         await syncCollection(announcementRepliesAPI, announcementReplies, setAnnouncementReplies, 'announcementReplies');
         await syncCollection(staffAttendancesAPI, staffAttendances, setStaffAttendances, 'staffAttendances');
+        await syncCollection(substitutionsAPI, substitutions, setSubstitutions, 'substitutions');
 
         await syncCollection(platformTopManagementAPI, platformTopManagement, setPlatformTopManagement, 'platformTopManagement');
         await syncCollection(platformSupervisorsAPI, platformSupervisors, setPlatformSupervisors, 'platformSupervisors');
@@ -1768,6 +1773,21 @@ export function AppDataProvider({ children }) {
   useEffect(() => { saveToLocalStorage('announcements', announcements); }, [announcements]);
   useEffect(() => { saveToLocalStorage('announcementReplies', announcementReplies); }, [announcementReplies]);
   useEffect(() => { saveToLocalStorage('staffAttendances', staffAttendances); }, [staffAttendances]);
+  useEffect(() => { saveToLocalStorage('substitutions', substitutions); }, [substitutions]);
+
+  // تعيين محفظ بديل لحلقة في يوم محدد (يستبدل أي بديل سابق لنفس الحلقة واليوم)
+  const addSubstitution = (sub) => {
+    const day = String(sub.date || '').replace(/\//g, '-');
+    const old = substitutions.filter(s => String(s.sessionId) === String(sub.sessionId) && String(s.date).replace(/\//g, '-') === day);
+    old.forEach(o => substitutionsAPI.delete(o.id).catch(err => console.error(err)));
+    const newItem = { ...sub, date: day, id: String(Date.now()), createdAt: new Date().toISOString() };
+    setSubstitutions(prev => [...prev.filter(s => !old.some(o => o.id === s.id)), newItem]);
+    substitutionsAPI.create(newItem).catch(err => console.error(err));
+  };
+  const deleteSubstitution = (id) => {
+    setSubstitutions(prev => prev.filter(s => String(s.id) !== String(id)));
+    substitutionsAPI.delete(id).catch(err => console.error(err));
+  };
 
   // تحديث دوري للإعلانات والردود ليصل الإشعار دون إعادة تحميل الصفحة
   useEffect(() => {
@@ -2462,6 +2482,7 @@ export function AppDataProvider({ children }) {
       attendances, addAttendance, deleteAttendance,
       sessionReports, addSessionReport, deleteSessionReport,
       updateAttendance, recordSessionJoin, staffAttendances,
+      substitutions, addSubstitution, deleteSubstitution,
       holidays, addHoliday, deleteHoliday,
       announcements, addAnnouncement, deleteAnnouncement,
       announcementReplies, addAnnouncementReply, markAnnouncementRepliesRead,

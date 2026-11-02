@@ -388,3 +388,12 @@ export const staffAttendancesAPI = {
   delete: (id) => apiCall(`/staffattendances/${id}`, { method: 'DELETE' }),
   bulkImport: (items) => apiCall('/staffattendances/bulk-import', { method: 'POST', body: { items } })
 };
+
+// Substitutions API (المحفظ البديل ليوم محدد)
+export const substitutionsAPI = {
+  getAll: () => apiCall('/substitutions'),
+  create: (data) => apiCall('/substitutions', { method: 'POST', body: data }),
+  update: (id, data) => apiCall(`/substitutions/${id}`, { method: 'PUT', body: data }),
+  delete: (id) => apiCall(`/substitutions/${id}`, { method: 'DELETE' }),
+  bulkImport: (items) => apiCall('/substitutions/bulk-import', { method: 'POST', body: { items } })
+};

@@ -6,6 +6,7 @@ import {
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
 import { exportMultiSheetToXLSX } from '../utils/xlsxHelper';
+import { getSubstitutionFor } from '../utils/userScopeHelper';
 
 // ─── منطق حساب مدة الحلقة وفق جدول الأزهر الشريف 2026 ─────────────────────────
 const normalizeAr = (str) => {
@@ -196,7 +197,10 @@ function CoordinatorRow({ row, index, onAssignSession, platformCoordinators, can
                         <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                           <td style={{ padding: '8px 10px', textAlign: 'center' }}>{idx + 1}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 'bold' }}>{s.sessionNo}</td>
-                          <td style={{ padding: '8px 10px', textAlign: 'center' }}>{s.mohfez || '-'}</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                            {s.mohfez || '-'}
+                            {s.substituteFor && <div style={{ fontSize: '10px', color: '#f59e0b' }}>بديل عن {s.substituteFor}</div>}
+                          </td>
                           <td style={{ padding: '8px 10px', textAlign: 'center' }}>{s.rowaq || '-'}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'center' }}>{s.level || '-'}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'center', direction: 'ltr' }}>{s.date}</td>
@@ -322,6 +326,7 @@ function CoordinatorWorkdaysReport() {
     platformCoordinators, 
     attendances, 
     staffAttendances = [],
+    substitutions = [],
     users, 
     hasPermission,
     updatePlatformSession 
@@ -428,9 +433,11 @@ function CoordinatorWorkdaysReport() {
         : (getSessionCoordinator(session) || 'غير معين لمنسق');
 
       // فلاتر البحث
+      const sub = getSubstitutionFor(att.sessionId, att.date, substitutions);
+      const effectiveMohfez = sub ? sub.substituteName : (session.mohfez || '');
       if (selCoord && coordName !== selCoord) return;
       if (selRowaq && session.rowaq !== selRowaq) return;
-      if (selMohfez && session.mohfez !== selMohfez) return;
+      if (selMohfez && effectiveMohfez !== selMohfez && session.mohfez !== selMohfez) return;
       if (isPlatformCoordinator && currentUser?.name &&
           normalizeAr(coordName) !== normalizeAr(currentUser.name)) return;
 
@@ -467,7 +474,8 @@ function CoordinatorWorkdaysReport() {
         sessionId: session.id,
         sessionNo: session.session_no,
         currentCoordinator: session.coordinator || '',
-        mohfez: session.mohfez || '',
+        mohfez: effectiveMohfez,
+        substituteFor: sub ? (session.mohfez || '') : '',
         rowaq: session.rowaq,
         level: session.level,
         date: att.date,
@@ -488,7 +496,7 @@ function CoordinatorWorkdaysReport() {
       if (b.isUnassigned) return -1;
       return a.coordinator.localeCompare(b.coordinator, 'ar');
     });
-  }, [attendances, staffAttendances, platformSessions, platformStudents, platformCoordinators, users, selYear, selMonth, selCoord, selRowaq, selMohfez, isPlatformCoordinator, currentUser]);
+  }, [attendances, staffAttendances, substitutions, platformSessions, platformStudents, platformCoordinators, users, selYear, selMonth, selCoord, selRowaq, selMohfez, isPlatformCoordinator, currentUser]);
 
   // إجماليات عامة
   const grandHours    = reportData.reduce((s, r) => s + r.totalHours, 0);
@@ -543,7 +551,7 @@ function CoordinatorWorkdaysReport() {
           'م': dIdx++,
           'اسم المنسق المشرف': c.coordinator,
           'رقم الحلقة': s.sessionNo || '-',
-          'المحفظ': s.mohfez || '-',
+          'المحفظ': s.substituteFor ? `${s.mohfez} (بديل عن ${s.substituteFor})` : (s.mohfez || '-'),
           'الرواق': s.rowaq || '-',
           'المستوى': s.level || '-',
           'التاريخ': s.date || '-',

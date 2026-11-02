@@ -3,7 +3,7 @@ import { Download, Search, Clock, Users, BookOpen, BarChart2 } from 'lucide-reac
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
 import { exportMultiSheetToXLSX } from '../utils/xlsxHelper';
-import { isSessionTaughtByMohfez } from '../utils/userScopeHelper';
+import { isSessionTaughtByMohfez, getSubstitutionFor, isUserSubstitute } from '../utils/userScopeHelper';
 
 // ─── منطق حساب مدة الحلقة وفق جدول الأزهر الشريف ─────────────────────────
 const normalizeAr = (str) => {
@@ -193,7 +193,7 @@ function MohfezRow({ row, idx }) {
                       return (
                         <tr key={i} style={{ borderBottom:'1px solid var(--border-subtle)' }}>
                           <td style={{ padding:'6px 10px', textAlign:'center', direction:'ltr', fontWeight:'bold' }}>{s.date}</td>
-                          <td style={{ padding:'6px 10px', textAlign:'center' }}>{s.sessionNo || '-'}</td>
+                          <td style={{ padding:'6px 10px', textAlign:'center' }}>{s.sessionNo || '-'}{s.substituteFor && <div style={{ fontSize:'11px', color:'#f59e0b' }}>بديل عن {s.substituteFor}</div>}</td>
                           <td style={{ padding:'6px 10px', textAlign:'center', fontSize:'12px' }}>{s.rowaq || '-'}</td>
                           <td style={{ padding:'6px 10px', textAlign:'center', fontSize:'12px' }}>{s.level || '-'}</td>
                           <td style={{ padding:'6px 10px', textAlign:'center' }}>
@@ -239,6 +239,7 @@ function MohfezHoursReport() {
     users = [], 
     attendances, 
     staffAttendances = [],
+    substitutions = [],
     hasPermission 
   } = useAppData();
 
@@ -267,8 +268,9 @@ function MohfezHoursReport() {
   const mohfezList = useMemo(() => {
     const names = new Set();
     relevantSessions.forEach(s => { if (s.mohfez) names.add(s.mohfez); });
+    substitutions.forEach(s => { if (s.substituteName) names.add(s.substituteName); });
     return Array.from(names).sort();
-  }, [relevantSessions]);
+  }, [relevantSessions, substitutions]);
 
   const rowaqList = useMemo(() => {
     const rws = new Set();
@@ -306,10 +308,15 @@ function MohfezHoursReport() {
         return;
       }
 
-      const mohfezName = session.mohfez || '-';
+      // المحفظ البديل في هذا اليوم يُحتسب له الجلسة بدلاً من المحفظ الأصلي
+      const sub = getSubstitutionFor(att.sessionId, att.date, substitutions);
+      const mohfezName = sub ? sub.substituteName : (session.mohfez || '-');
 
       if (selMohfez && mohfezName !== selMohfez) return;
-      if (isPlatformMohfez && !isSessionTaughtByMohfez(session, currentUser, platformMohfezs, users)) return;
+      if (isPlatformMohfez) {
+        const allowed = sub ? isUserSubstitute(sub, currentUser) : isSessionTaughtByMohfez(session, currentUser, platformMohfezs, users);
+        if (!allowed) return;
+      }
 
       const active = (att.records || []).filter(r => {
         const st = platformStudents.find(s => String(s.id) === String(r.studentId));
@@ -328,6 +335,7 @@ function MohfezHoursReport() {
       }
       map[mohfezName].sessions.push({
         date: att.date, sessionNo: session.session_no,
+        substituteFor: sub ? (session.mohfez || '') : '',
         rowaq: session.rowaq, level: session.level,
         presentCount, duration,
         mohfezJoinedAt: joined ? joined.joinedAt : null
@@ -338,7 +346,7 @@ function MohfezHoursReport() {
     });
 
     return Object.values(map).sort((a, b) => a.mohfez.localeCompare(b.mohfez, 'ar'));
-  }, [attendances, staffAttendances, platformSessions, platformStudents, selYear, selMonth, selMohfez, selRowaq, isPlatformMohfez, isPlatformCoordinator, currentUser, platformCoordinators, users]);
+  }, [attendances, staffAttendances, substitutions, platformSessions, platformStudents, selYear, selMonth, selMohfez, selRowaq, isPlatformMohfez, isPlatformCoordinator, currentUser, platformCoordinators, users]);
 
   const grandHours    = reportData.reduce((s, r) => s + r.totalHours, 0);
   const grandSessions = reportData.reduce((s, r) => s + r.totalSessions, 0);
@@ -374,7 +382,7 @@ function MohfezHoursReport() {
           'اسم المحفظ': m.mohfez,
           'الرواق': s.rowaq || '-',
           'المستوى': s.level || '-',
-          'رقم الحلقة': s.sessionNo || '-',
+          'رقم الحلقة': s.substituteFor ? `${s.sessionNo || '-'} (بديل عن ${s.substituteFor})` : (s.sessionNo || '-'),
           'التاريخ': s.date || '-',
           'عدد الحضور': s.presentCount,
           'المدة المستحقة': bd.label,

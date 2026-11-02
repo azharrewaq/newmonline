@@ -1,12 +1,14 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, Plus, Download, Upload, Edit, Trash2, ClipboardCheck, FileText, Video, Play } from 'lucide-react';
+import { Search, Plus, Download, Upload, Edit, Trash2, ClipboardCheck, FileText, Video, Play, UserCheck } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
 import { exportToXLSX, importFromXLSX } from '../utils/xlsxHelper';
 import { filterSessionsForUser } from '../utils/userScopeHelper';
 import { countriesList } from '../data/countries';
-import { getJoinState, useNow, formatReportText } from '../utils/sessionHelpers';
+import { getJoinState, useNow, formatReportText, toLocalDateStr } from '../utils/sessionHelpers';
+import { getSubstitutionFor } from '../utils/userScopeHelper';
+import SubstituteModal from '../components/SubstituteModal';
 
 function PlatformSessionsList() {
   const { 
@@ -22,9 +24,11 @@ function PlatformSessionsList() {
     users = [],
     holidays = [],
     sessionReports = [],
+    substitutions = [],
     recordSessionJoin
   } = useAppData();
   const importRef = useRef(null);
+  const [substituteFor, setSubstituteFor] = useState(null);
   const [searchParams] = useSearchParams();
   const now = useNow(30000);
   const [expandedReports, setExpandedReports] = useState({});
@@ -33,6 +37,8 @@ function PlatformSessionsList() {
   const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
   const role = currentUser ? currentUser.role : 'admin';
   const isStudent = role === 'student' || role === 'sharia_student';
+  // تعيين محفظ بديل: الإدارة والمشرفون ومنسق الحلقة (الحلقات المعروضة له مقصورة على حلقاته)
+  const canAssignSubstitute = ['admin', 'platform_admin', 'platform_supervisor', 'platform_coordinator'].includes(role);
 
   const [filterCountry, setFilterCountry] = useState('');
   const [filterRowaq, setFilterRowaq] = useState('');
@@ -97,7 +103,7 @@ function PlatformSessionsList() {
       platformStudents,
       users
     });
-  }, [platformSessions, currentUser, platformCoordinators, platformMohfezs, platformStudents, users]);
+  }, [platformSessions, currentUser, platformCoordinators, platformMohfezs, platformStudents, users, substitutions]);
 
   // 2. تطبيق فلاتر واجهة المستخدم
   const filtered = scopedSessions.filter(s => {
@@ -371,7 +377,17 @@ function PlatformSessionsList() {
               filtered.map(s => (
                 <tr key={s.id}>
                   <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{s.session_no}</td>
-                  <td style={{ textAlign: 'center' }}>{s.mohfez}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    {(() => {
+                      const sub = getSubstitutionFor(s.id, toLocalDateStr(now), substitutions);
+                      return sub ? (
+                        <>
+                          <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)' }}>{s.mohfez}</span>
+                          <div style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: 12 }}>بديل اليوم: {sub.substituteName}</div>
+                        </>
+                      ) : s.mohfez;
+                    })()}
+                  </td>
                   <td style={{ textAlign: 'center', color: s.coordinator ? 'inherit' : 'var(--text-muted)' }}>{s.coordinator || '-'}</td>
                   <td style={{ textAlign: 'center' }}>{s.countries ? s.countries.join('، ') : ''}</td>
                   <td style={{ textAlign: 'center' }}>{s.rowaq}</td>
@@ -388,6 +404,11 @@ function PlatformSessionsList() {
                         <FileText size={14}/> التقارير
                       </Link>
                     )}
+                    {canAssignSubstitute && (
+                      <button title="محفظ بديل" onClick={() => setSubstituteFor(s)} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', fontFamily: 'inherit' }}>
+                        <UserCheck size={14}/> بديل
+                      </button>
+                    )}
                     {hasPermission('sessions', 'edit') && (
                       <Link to={`/platform-sessions/create?id=${s.id}`} className="action-icon edit" style={{textDecoration: 'none', color: 'inherit'}} title="تعديل"><Edit size={16}/></Link>
                     )}
@@ -402,6 +423,7 @@ function PlatformSessionsList() {
           </tbody>
         </table>
       </div>
+      {substituteFor && <SubstituteModal session={substituteFor} onClose={() => setSubstituteFor(null)} />}
     </div>
   );
 }

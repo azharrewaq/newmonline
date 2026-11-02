@@ -29,6 +29,31 @@ export const normalizeArabic = (str) => {
 };
 
 /**
+ * ───────── المحفظ البديل ─────────
+ * قائمة بدائل المحفظين (يحدّثها AppDataContext) ليستفيد منها منطق الصلاحيات في كل الصفحات.
+ * كل عنصر: { sessionId, date: 'YYYY-MM-DD', substituteName, substituteNationalId }
+ */
+let activeSubstitutions = [];
+export const setActiveSubstitutions = (list) => { activeSubstitutions = Array.isArray(list) ? list : []; };
+
+const localDateStr = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export const getSubstitutionFor = (sessionId, dateStr, list = activeSubstitutions) => {
+  const ds = String(dateStr || '').replace(/\//g, '-');
+  return (list || []).find(s =>
+    String(s.sessionId) === String(sessionId) && String(s.date || '').replace(/\//g, '-') === ds
+  ) || null;
+};
+
+export const isUserSubstitute = (sub, user) => {
+  if (!sub || !user) return false;
+  const nid = String(user.national_id || user.username || '').trim();
+  if (sub.substituteNationalId && String(sub.substituteNationalId).trim() === nid) return true;
+  return !!sub.substituteName && normalizeArabic(sub.substituteName) === normalizeArabic(user.name || '');
+};
+
+/**
  * التحقق مما إذا كانت الحلقة تحت إشراف المنسق
  */
 export const isSessionSupervisedByCoordinator = (session, user, platformCoordinators = [], users = []) => {
@@ -218,6 +243,9 @@ export const isUserAllowedSession = (session, user, {
 
   // محفظ المنصة أو الأروقة
   if (role === 'platform_mohfez' || role === 'mohfez') {
+    // محفظ بديل لهذا اليوم: يحل محل المحفظ الأصلي في صلاحية الوصول
+    const todaySub = getSubstitutionFor(session.id, localDateStr());
+    if (todaySub) return isUserSubstitute(todaySub, user);
     return isSessionTaughtByMohfez(session, user, platformMohfezs, users);
   }
 
