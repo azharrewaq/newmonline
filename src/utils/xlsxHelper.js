@@ -76,7 +76,7 @@ const buildLookupCatalog = () => {
     },
     {
       title: 'التوقيت المناسب للدارس',
-      matchHeaders: ['التوقيت المناسب'],
+      matchHeaders: ['التوقيت المناسب', 'الساعة المناسبة'],
       values: ['من 6 إلى 7 مساء', 'من 7 إلى 8 مساء', 'من 8 إلى 9 مساء', 'من 9 إلى 10 مساء'],
     },
     {
@@ -305,10 +305,9 @@ const injectDataValidationsIntoXlsx = (xlsxArrayBuffer, validationsBySheetIndex)
 /**
  * استخراج قواعد القوائم المنسدلة لشيت معين بناءً على عناوين أعمدته
  */
-const buildValidationRulesForData = (data, headerFormulaMap) => {
-  if (!Array.isArray(data) || data.length === 0) return [];
-  const headers = Object.keys(data[0] || {});
-  const maxRow = Math.max(data.length + 500, VALIDATION_MAX_ROW);
+const buildValidationRulesForHeaders = (headers, headerFormulaMap, startRow = 2, dataLen = 100) => {
+  if (!Array.isArray(headers) || headers.length === 0) return [];
+  const maxRow = Math.max(dataLen + 500, VALIDATION_MAX_ROW);
   const rules = [];
 
   headers.forEach((h, idx) => {
@@ -316,12 +315,18 @@ const buildValidationRulesForData = (data, headerFormulaMap) => {
     if (formula) {
       const colLetter = colIndexToLetter(idx);
       rules.push({
-        sqref: `${colLetter}2:${colLetter}${maxRow}`,
+        sqref: `${colLetter}${startRow}:${colLetter}${maxRow}`,
         formula,
       });
     }
   });
   return rules;
+};
+
+const buildValidationRulesForData = (data, headerFormulaMap) => {
+  if (!Array.isArray(data) || data.length === 0) return [];
+  const headers = Object.keys(data[0] || {});
+  return buildValidationRulesForHeaders(headers, headerFormulaMap, 2, data.length);
 };
 
 const downloadXlsxBytes = (bytes, fileName) => {
@@ -408,6 +413,162 @@ export function exportMultiSheetToXLSX(sheets, fileName = 'export') {
 }
 
 /**
+ * تصدير كشوف اختبار تحديد المستوى إلى ملف Excel بنفس الديباجة والأعمدة الرسمية للطباعة
+ * مع ربط الأعمدة بالقوائم المنسدلة من شيت "المسميات"
+ */
+export function exportExamSheetsToXLSX(
+  sheets,
+  fileName = 'كشف_تحديد_مستوى_المنصة_المحلية_بالجامع_الأزهر_نوفمبر_2026'
+) {
+  if (!sheets || sheets.length === 0) {
+    alert('لا توجد كشوف للتصدير');
+    return;
+  }
+  try {
+    const workbook = xlsxLib.utils.book_new();
+    const { ws: lookupWs, headerFormulaMap } = createLookupsWorksheet();
+    const validationsBySheetIndex = {};
+    const usedSheetNames = new Set([LOOKUP_SHEET_NAME]);
+
+    const tableHeaders = [
+      'م',
+      'الاسم',
+      'الرقم القومى',
+      'درجة السؤال الأول',
+      'درجة السؤال الثانى',
+      'درجة السؤال الثالث',
+      'درجة السؤال الرابع',
+      'درجة السؤال الخامس',
+      'الرواق',
+      'المستوى المتقدم عليه',
+      'المستوى وفق الاختبار',
+      'السورة المتوقف عندها',
+      'الأيام المناسبة',
+      'الساعة المناسبة',
+    ];
+
+    sheets.forEach((sheet, idx) => {
+      const totalRows = Math.max(sheet.rows?.length || 0, sheet.padCount || 25);
+      const groupDisplay =
+        sheet.groupNo && sheet.groupNo !== 'غير مسكن'
+          ? `مجموعة (${sheet.groupNo})${sheet.shiftLabel ? ` - ${sheet.shiftLabel}` : ''}`
+          : 'غير محدد';
+
+      const aoa = [
+        ['الجامع الأزهر - إدارة شئون الأروقة - كشف تحديد مستوى المنصة المحلية بالجامع الأزهر نوفمبر 2026'],
+        [
+          `المجموعة: ${groupDisplay}`,
+          '',
+          '',
+          `المنسق: ${sheet.coordinator || '................'}`,
+          '',
+          '',
+          `المحفظ الممتحن: ${sheet.mohfez || '................'}`,
+          '',
+          '',
+          `التاريخ: ${sheet.examDate || '   / 11 / 2026'}`,
+          '',
+          '',
+          `عدد الدارسين: ${sheet.rows?.length || totalRows}`,
+          '',
+        ],
+        tableHeaders,
+      ];
+
+      for (let i = 0; i < totalRows; i++) {
+        const a = sheet.rows?.[i] || {};
+        aoa.push([
+          i + 1,
+          a.name || '',
+          a.national_id || a.passport_no || '',
+          a.q1 ?? '',
+          a.q2 ?? '',
+          a.q3 ?? '',
+          a.q4 ?? '',
+          a.q5 ?? '',
+          a.rowaq || '',
+          a.applied_level || a.level || '',
+          a.tested_level || '',
+          a.stopped_surah || '',
+          a.preferred_days || '',
+          a.preferred_time || '',
+        ]);
+      }
+
+      aoa.push([]);
+      aoa.push([
+        'توقيع المحفظ الممتحن: ........................',
+        '',
+        '',
+        '',
+        'توقيع المنسق: ........................',
+        '',
+        '',
+        '',
+        '',
+        'يعتمد، إدارة شئون الأروقة: ........................',
+      ]);
+
+      const ws = xlsxLib.utils.aoa_to_sheet(aoa);
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
+        { s: { r: 1, c: 3 }, e: { r: 1, c: 5 } },
+        { s: { r: 1, c: 6 }, e: { r: 1, c: 8 } },
+        { s: { r: 1, c: 9 }, e: { r: 1, c: 11 } },
+        { s: { r: 1, c: 12 }, e: { r: 1, c: 13 } },
+      ];
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 28 },
+        { wch: 20 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 28 },
+        { wch: 26 },
+        { wch: 26 },
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 18 },
+      ];
+
+      let baseName =
+        sheet.groupNo && sheet.groupNo !== 'غير مسكن'
+          ? `مجموعة ${sheet.groupNo}`
+          : `كشف ${idx + 1}`;
+      if (sheet.coordinator) {
+        baseName = `${baseName} - ${sheet.coordinator}`.slice(0, 28);
+      }
+      baseName = baseName.replace(/[\\/?*[\]:]/g, ' ').trim() || `كشف ${idx + 1}`;
+      let finalSheetName = baseName;
+      let counter = 2;
+      while (usedSheetNames.has(finalSheetName)) {
+        finalSheetName = `${baseName.slice(0, 25)} (${counter++})`;
+      }
+      usedSheetNames.add(finalSheetName);
+
+      xlsxLib.utils.book_append_sheet(workbook, ws, finalSheetName);
+      const rules = buildValidationRulesForHeaders(tableHeaders, headerFormulaMap, 4, totalRows + 4);
+      if (rules.length > 0) {
+        validationsBySheetIndex[idx + 1] = rules;
+      }
+    });
+
+    xlsxLib.utils.book_append_sheet(workbook, lookupWs, LOOKUP_SHEET_NAME);
+
+    const rawBuffer = xlsxLib.write(workbook, { type: 'array', bookType: 'xlsx' });
+    const finalBytes = injectDataValidationsIntoXlsx(rawBuffer, validationsBySheetIndex);
+    downloadXlsxBytes(finalBytes, fileName);
+  } catch (error) {
+    console.error('Exam Sheets XLSX Export Error:', error);
+    alert('حدث خطأ أثناء تصدير ملف الإكسيل.');
+  }
+}
+
+/**
  * Import data from an xlsx file, returns a Promise resolving to array of objects
  */
 export function importFromXLSX(file) {
@@ -417,10 +578,37 @@ export function importFromXLSX(file) {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = xlsxLib.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames.find(n => n !== LOOKUP_SHEET_NAME) || workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const json = xlsxLib.utils.sheet_to_json(worksheet);
-        resolve(json);
+        const targetSheets = workbook.SheetNames.filter(n => n !== LOOKUP_SHEET_NAME);
+        const sheetsToRead = targetSheets.length > 0 ? targetSheets : workbook.SheetNames;
+        let allRows = [];
+
+        sheetsToRead.forEach(sheetName => {
+          const worksheet = workbook.Sheets[sheetName];
+          if (!worksheet) return;
+          const aoa = xlsxLib.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+          if (!aoa || aoa.length === 0) return;
+
+          // البحث عن صف العناوين في حال وجود ديباجة بأعلى الشيت (مثل كشف الاختبار)
+          let headerRowIdx = 0;
+          for (let r = 0; r < Math.min(aoa.length, 10); r++) {
+            const rowStrs = (aoa[r] || []).map(c => String(c || '').trim());
+            if (
+              rowStrs.includes('الاسم') ||
+              rowStrs.includes('اسم المحفظ') ||
+              rowStrs.includes('رقم الحلقة') ||
+              rowStrs.includes('الرقم القومي') ||
+              rowStrs.includes('الرقم القومى')
+            ) {
+              headerRowIdx = r;
+              break;
+            }
+          }
+
+          const json = xlsxLib.utils.sheet_to_json(worksheet, { range: headerRowIdx });
+          allRows = allRows.concat(json);
+        });
+
+        resolve(allRows);
       } catch (err) {
         console.error('XLSX Import Error:', err);
         reject(err);

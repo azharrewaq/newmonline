@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
-import { exportToXLSX, importFromXLSX } from '../utils/xlsxHelper';
+import { exportToXLSX, importFromXLSX, exportExamSheetsToXLSX } from '../utils/xlsxHelper';
 import { quranSurahs } from '../data/quranSurahs';
 import { normalizeArabic } from '../utils/userScopeHelper';
 import {
@@ -203,6 +203,53 @@ function PlatformApplicantsList() {
     printPlacementExamSheets(allSheets);
   };
 
+  // تصدير كشوف الاختبار إلى ملف Excel بنفس الديباجة والأعمدة الرسمية للطباعة
+  const handleExportExamSheetsExcel = () => {
+    const sheets = buildExamSheetsByGroupAndCoordinator(filtered, placementGroups, {
+      targetGroupNo: filterGroupNo,
+      targetCoordinator: filterCoordinator,
+      targetDate: filterExamDate,
+    });
+    exportExamSheetsToXLSX(sheets, 'كشف_تحديد_مستوى_المنصة_المحلية_بالجامع_الأزهر_نوفمبر_2026');
+  };
+
+  // تصدير كشف مجموعة واحدة محددة إلى Excel
+  const handleExportGroupSheetExcel = (group) => {
+    const groupApplicants = platformApplicants.filter(a => {
+      if (Number(a.group_no) !== Number(group.group_no)) return false;
+      if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+      return true;
+    });
+    const sheets = buildExamSheetsByGroupAndCoordinator(groupApplicants, placementGroups, {
+      targetGroupNo: group.group_no,
+      targetCoordinator: group.coordinator || '',
+      targetDate: filterExamDate,
+      padToCapacity: true,
+    });
+    exportExamSheetsToXLSX(sheets, `كشف_تحديد_المستوى_مجموعة_${group.group_no}`);
+  };
+
+  // تصدير كشوف جميع الـ 40 مجموعة دفعة واحدة إلى Excel
+  const handleExportAllFortyGroupsExcel = () => {
+    const allSheets = placementGroups.map(group => {
+      const groupApplicants = platformApplicants.filter(a => {
+        if (Number(a.group_no) !== Number(group.group_no)) return false;
+        if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+        return true;
+      });
+      return {
+        groupNo: group.group_no,
+        shiftLabel: group.shift_label,
+        coordinator: group.coordinator || groupApplicants[0]?.coordinator || '',
+        mohfez: group.mohfez || groupApplicants[0]?.mohfez || '',
+        examDate: filterExamDate || groupApplicants[0]?.exam_date || '',
+        rows: groupApplicants,
+        padCount: PLACEMENT_GROUP_CAPACITY,
+      };
+    });
+    exportExamSheetsToXLSX(allSheets, 'كشوف_تحديد_المستوى_40_مجموعة_الجامع_الأزهر_نوفمبر_2026');
+  };
+
   // تصدير جدول المتقدمين الحالي إلى Excel
   const handleExport = () => {
     if (isMohfez) return;
@@ -260,25 +307,29 @@ function PlatformApplicantsList() {
         return;
       }
 
-      const existingIds = new Set(
-        platformApplicants.map(a => String(a.national_id || a.passport_no || '').trim()).filter(Boolean)
+      const existingMap = new Map(
+        platformApplicants
+          .filter(a => String(a.national_id || a.passport_no || '').trim())
+          .map(a => [String(a.national_id || a.passport_no || '').trim(), a])
       );
+      const seenNids = new Set();
 
       const newApplicants = [];
       const newUsers = [];
+      let updatedCount = 0;
 
       rows.forEach((row, idx) => {
         const nid = String(
           row['الرقم القومي أو جواز السفر'] ||
           row['الرقم القومي او جواز السفر'] ||
           row['الرقم القومي'] ||
+          row['الرقم القومى'] ||
           row['رقم جواز السفر'] ||
           ''
         ).trim();
         const name = String(row['الاسم'] || '').trim();
         if (!nid && !name) return;
-        if (nid && existingIds.has(nid)) return;
-        if (nid) existingIds.add(nid);
+        if (name.startsWith('توقيع المحفظ') || name.startsWith('الجامع الأزهر') || name.startsWith('المجموعة:')) return;
 
         const rawRowaq = row['الرواق'] || '';
         const rawGender = row['الجنس'] || '';
@@ -288,7 +339,12 @@ function PlatformApplicantsList() {
         const level = testedLevel || appliedLevel;
         const stoppedSurah = String(row['السورة المتوقف عندها'] || row['السورة'] || '').replace(/^سورة\s+/, '').trim();
         const preferredDays = normalizePreferredDays(String(row['الأيام المناسبة'] || row['الايام المناسبة'] || '').trim());
-        const preferredTime = String(row['التوقيت المناسب'] || '').trim();
+        const preferredTime = String(row['التوقيت المناسب'] || row['الساعة المناسبة'] || '').trim();
+        const q1 = row['درجة السؤال الأول'] ?? row['درجة السؤال الاول'] ?? '';
+        const q2 = row['درجة السؤال الثانى'] ?? row['درجة السؤال الثاني'] ?? '';
+        const q3 = row['درجة السؤال الثالث'] ?? '';
+        const q4 = row['درجة السؤال الرابع'] ?? '';
+        const q5 = row['درجة السؤال الخامس'] ?? '';
 
         const groupNoRaw = row['رقم المجموعة'] || row['المجموعة'] || '';
         const groupNo = groupNoRaw ? Number(groupNoRaw) : '';
@@ -299,7 +355,44 @@ function PlatformApplicantsList() {
         const examDate = String(row['تاريخ الاختبار'] || '').trim();
         const examTime = String(row['توقيت الاختبار'] || matchedGroup?.time_start || (groupNo > 20 ? '20:00' : (groupNo >= 1 ? '18:00' : ''))).trim();
         const teamsLink = String(row['رابط تيمز'] || row['رابط الحلقة'] || matchedGroup?.teams_link || '').trim();
-        const phone = String(row['الهاتف'] || row['رقم الهاتف'] || '').trim();
+        const phone = String(row['الهاتف'] || row['رقم الهاتف'] || row['رقم التليفون'] || '').trim();
+
+        // إذا كان المتقدم موجوداً بالفعل، نحدّث بياناته ونتيجة اختباره من الكشف
+        if (nid && existingMap.has(nid)) {
+          const ex = existingMap.get(nid);
+          const patch = {};
+          if (name) patch.name = name;
+          if (normRowaq && APPLICANT_ROWAQ_OPTIONS.includes(normRowaq)) {
+            patch.rowaq = normRowaq;
+            patch.gender = normRowaq.includes('سيدات') || normRowaq.includes('نساء') ? 'أنثى' : (normRowaq.includes('رجال') ? 'ذكر' : 'أطفال');
+          }
+          if (appliedLevel) patch.applied_level = appliedLevel;
+          if (testedLevel) patch.tested_level = testedLevel;
+          if (level) patch.level = level;
+          if (stoppedSurah) patch.stopped_surah = stoppedSurah;
+          if (preferredDays) patch.preferred_days = preferredDays;
+          if (preferredTime) patch.preferred_time = preferredTime;
+          if (q1 !== '') patch.q1 = q1;
+          if (q2 !== '') patch.q2 = q2;
+          if (q3 !== '') patch.q3 = q3;
+          if (q4 !== '') patch.q4 = q4;
+          if (q5 !== '') patch.q5 = q5;
+          if (groupNo) patch.group_no = groupNo;
+          if (mohfez) patch.mohfez = mohfez;
+          if (coordinator) patch.coordinator = coordinator;
+          if (examDate) patch.exam_date = examDate;
+          if (examTime) patch.exam_time = examTime;
+          if (teamsLink) patch.teams_link = teamsLink;
+          if ((patch.rowaq || ex.rowaq) && (patch.tested_level || ex.tested_level || ((patch.applied_level || ex.applied_level || ex.level) && (patch.stopped_surah || ex.stopped_surah)))) {
+            patch.status = 'تم تحديد المستوى';
+          }
+          updatePlatformApplicant(ex.id, patch);
+          updatedCount++;
+          return;
+        }
+
+        if (nid && seenNids.has(nid)) return;
+        if (nid) seenNids.add(nid);
 
         const id = String(Date.now() + idx + Math.random());
         const gender = normRowaq.includes('سيدات') || normRowaq.includes('نساء') ? 'أنثى' : (normRowaq.includes('رجال') ? 'ذكر' : 'أطفال');
@@ -318,6 +411,11 @@ function PlatformApplicantsList() {
           stopped_surah: stoppedSurah,
           preferred_days: preferredDays,
           preferred_time: preferredTime,
+          q1,
+          q2,
+          q3,
+          q4,
+          q5,
           group_no: groupNo,
           mohfez,
           coordinator,
@@ -345,14 +443,16 @@ function PlatformApplicantsList() {
         }
       });
 
-      if (newApplicants.length === 0) {
-        alert('لم يتم العثور على سجلات جديدة للاستيراد (أو جميع الأرقام القومية مكررة).');
+      if (newApplicants.length === 0 && updatedCount === 0) {
+        alert('لم يتم العثور على سجلات صالحة للاستيراد.');
         e.target.value = '';
         return;
       }
 
-      await bulkImportPlatformApplicants(newApplicants, newUsers);
-      alert(`تم استيراد (${newApplicants.length}) متقدم بنجاح`);
+      if (newApplicants.length > 0) {
+        await bulkImportPlatformApplicants(newApplicants, newUsers);
+      }
+      alert(`تم بنجاح: إضافة (${newApplicants.length}) متقدم جديد${updatedCount > 0 ? ` وتحديث (${updatedCount}) متقدم` : ''}`);
     } catch (err) {
       console.error(err);
       alert('حدث خطأ أثناء استيراد الملف');
@@ -587,6 +687,9 @@ function PlatformApplicantsList() {
               <button className="btn btn-gold-outline" onClick={handlePrintExamSheets}>
                 <Printer size={16} /> طباعة كشف الاختبار (لكل مجموعة ومنسق)
               </button>
+              <button className="btn btn-outline" onClick={handleExportExamSheetsExcel}>
+                <Download size={16} /> تصدير كشف الاختبار (إكسيل)
+              </button>
               {!isMohfez && (
                 <button className="btn btn-outline" onClick={handleExport}>
                   <Download size={16} /> تصدير
@@ -804,11 +907,16 @@ function PlatformApplicantsList() {
         <div>
           <div className="box-card" style={{ padding: '12px 20px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              طباعة كشف اختبار تحديد المستوى الرسمي (الجامع الأزهر - إدارة شئون الأروقة - نوفمبر 2026) لكل مجموعة ومنسق:
+              طباعة أو تصدير كشف اختبار تحديد المستوى الرسمي (الجامع الأزهر - إدارة شئون الأروقة - نوفمبر 2026) لكل مجموعة ومنسق:
             </div>
-            <button className="btn btn-primary" onClick={handlePrintAllFortyGroups}>
-              <Printer size={16} /> طباعة كشوف جميع المجموعات (40 مجموعة)
-            </button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={handlePrintAllFortyGroups}>
+                <Printer size={16} /> طباعة كشوف جميع المجموعات (40 مجموعة)
+              </button>
+              <button className="btn btn-gold-outline" onClick={handleExportAllFortyGroupsExcel}>
+                <Download size={16} /> تصدير كشوف جميع المجموعات (إكسيل)
+              </button>
+            </div>
           </div>
           {[
             { title: 'الفترة الأولى: 20 مجموعة (من 6 إلى 8 مساءً)', min: 1, max: 20, badgeColor: '#3b82f6' },
@@ -927,6 +1035,14 @@ function PlatformApplicantsList() {
                                   title="طباعة كشف اختبار المجموعة"
                                 >
                                   <Printer size={14} /> طباعة الكشف
+                                </button>
+                                <button
+                                  className="btn btn-outline"
+                                  style={{ padding: '4px 10px', fontSize: 12 }}
+                                  onClick={() => handleExportGroupSheetExcel(g)}
+                                  title="تصدير كشف اختبار المجموعة إكسيل"
+                                >
+                                  <Download size={14} /> إكسيل
                                 </button>
                               </div>
                             </td>
