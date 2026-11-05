@@ -1667,7 +1667,7 @@ export function AppDataProvider({ children }) {
   const addUser = (user) => {
     const normalizedUser = {
       ...normalizeUserFields(user),
-      id: String(Date.now()),
+      id: user.id || String(Date.now() + Math.random()),
       created_at: new Date().toLocaleDateString('ar-EG')
     };
     try {
@@ -1975,7 +1975,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addPlatformCoordinator = (item) => {
-    const newItem = { ...item, id: String(Date.now()) };
+    const newItem = { ...item, id: item.id || String(Date.now() + Math.random()) };
     setPlatformCoordinators(prev => [...prev, newItem]);
     platformCoordinatorsAPI.create(newItem).catch(err => console.error(err));
   };
@@ -1993,7 +1993,7 @@ export function AppDataProvider({ children }) {
   };
 
   const addPlatformMohfez = (item) => {
-    const newItem = { ...item, id: String(Date.now()) };
+    const newItem = { ...item, id: item.id || String(Date.now() + Math.random()) };
     setPlatformMohfezs(prev => [...prev, newItem]);
     platformMohfezsAPI.create(newItem).catch(err => console.error(err));
   };

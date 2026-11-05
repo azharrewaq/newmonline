@@ -8,16 +8,6 @@ const xlsxLib = XLSX && XLSX.utils ? XLSX : (XLSX[String('default')] || XLSX);
 const LOOKUP_SHEET_NAME = 'المسميات';
 const VALIDATION_MAX_ROW = 6500;
 
-const getDynamicStaffNames = (storageKey) => {
-  try {
-    if (typeof window === 'undefined') return [];
-    const items = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    return Array.from(new Set(items.map(i => (i?.name || '').trim()).filter(Boolean)));
-  } catch {
-    return [];
-  }
-};
-
 const getDynamicSessionNumbers = () => {
   try {
     if (typeof window === 'undefined') return [];
@@ -32,8 +22,6 @@ const getDynamicSessionNumbers = () => {
  * قواميس المسميات المعتمدة في المنصة لبناء شيت "المسميات" وربط القوائم المنسدلة
  */
 const buildLookupCatalog = () => {
-  const mohfezNames = getDynamicStaffNames('platformMohfezs');
-  const coordNames = getDynamicStaffNames('platformCoordinators');
   const sessionNos = getDynamicSessionNumbers();
 
   const childrenLevels = [
@@ -107,34 +95,14 @@ const buildLookupCatalog = () => {
       values: ['18:00', '20:00'],
     },
     {
-      title: 'المحفظون المسجلون',
-      matchHeaders: ['المحفظ', 'اسم المحفظ'],
-      values: mohfezNames.length > 0 ? mohfezNames : ['(يرجى إضافة محفظين في المنصة)'],
-    },
-    {
-      title: 'المنسقون المسجلون',
-      matchHeaders: ['المنسق', 'اسم المنسق', 'اسم المنسق المشرف'],
-      values: coordNames.length > 0 ? coordNames : ['(يرجى إضافة منسقين في المنصة)'],
-    },
-    {
       title: 'أرقام الحلقات الأصلية',
       matchHeaders: ['الحلقة'],
       values: sessionNos.length > 0 ? sessionNos : ['1'],
     },
     {
-      title: 'نوع الدارسين / الجنس',
-      matchHeaders: ['الدارسين', 'الجنس'],
-      values: ['رجال', 'نساء', 'أطفال', 'ذكر', 'أنثى'],
-    },
-    {
       title: 'الدول',
       matchHeaders: ['الدولة', 'الدول'],
       values: countriesList,
-    },
-    {
-      title: 'الحالة',
-      matchHeaders: ['الحالة'],
-      values: ['في انتظار الاختبار', 'تم تحديد المستوى', 'غائب', 'نشط', 'موقوف'],
     },
   ];
 };

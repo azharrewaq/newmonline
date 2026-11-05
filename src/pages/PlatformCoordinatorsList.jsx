@@ -11,6 +11,7 @@ function PlatformCoordinatorsList() {
     platformCoordinators, 
     deletePlatformCoordinator, 
     addPlatformCoordinator, 
+    addUser,
     hasPermission, 
     deleteAllPlatformCoordinators,
     platformSessions = [],
@@ -42,12 +43,12 @@ function PlatformCoordinatorsList() {
 
   const handleExport = () => {
     const exportData = filtered.map(c => ({
-      'الاسم': c.name,
-      'رقم القرار': c.decision_no,
-      'التخصص': c.specialization,
-      'رقم السجل': c.registry_no,
-      'الرقم القومي': c.national_id,
-      'الهاتف': c.phone,
+      'الاسم': c.name || '',
+      'الرقم القومي': c.national_id || '',
+      'رقم التليفون': c.phone || '',
+      'رقم السجل': c.registry_no || '',
+      'التخصص': c.specialization || '',
+      'رقم القرار': c.decision_no || '',
     }));
     exportToXLSX(exportData, 'المنسقين', 'منسقين المنصة');
   };
@@ -55,11 +56,11 @@ function PlatformCoordinatorsList() {
   const handleExportTemplate = () => {
     exportToXLSX([{
       'الاسم': '',
-      'رقم القرار': '',
-      'التخصص': '',
-      'رقم السجل': '',
       'الرقم القومي': '',
-      'الهاتف': '',
+      'رقم التليفون': '',
+      'رقم السجل': '',
+      'التخصص': '',
+      'رقم القرار': '',
     }], 'نموذج_استيراد_المنسقين', 'نموذج');
   };
 
@@ -68,17 +69,42 @@ function PlatformCoordinatorsList() {
     if (!file) return;
     try {
       const rows = await importFromXLSX(file);
-      rows.forEach(row => {
+      let importedCount = 0;
+      rows.forEach((row, idx) => {
+        const name = String(row['الاسم'] || row['اسم المنسق'] || '').trim();
+        const national_id = String(row['الرقم القومي'] || row['الرقم القومى'] || '').trim();
+        const phone = String(row['رقم التليفون'] || row['رقم الهاتف'] || row['الهاتف'] || row['التليفون'] || '').trim();
+        if (!name || !national_id || !phone) return;
+        const registry_no = String(row['رقم السجل'] || '').trim();
         addPlatformCoordinator({
-          name: row['الاسم'] || '',
-          decision_no: row['رقم القرار'] || '',
-          specialization: row['التخصص'] || '',
-          registry_no: row['رقم السجل'] || '',
-          national_id: row['الرقم القومي'] || '',
-          phone: row['الهاتف'] || '',
+          id: String(Date.now() + idx + Math.random()),
+          name,
+          national_id,
+          phone,
+          decision_no: String(row['رقم القرار'] || '').trim(),
+          specialization: String(row['التخصص'] || '').trim(),
+          registry_no,
+          username: national_id,
+          password: registry_no || national_id,
         });
+        addUser({
+          id: String(Date.now() + idx + Math.random()),
+          name,
+          email: national_id,
+          username: national_id,
+          password: registry_no || national_id,
+          phone,
+          role: 'platform_coordinator',
+          national_id,
+          record_number: registry_no || national_id,
+        });
+        importedCount++;
       });
-      alert('تم استيراد البيانات بنجاح');
+      if (importedCount === 0) {
+        alert('يرجى التأكد من وجود الأعمدة الأساسية في الملف: (الاسم - الرقم القومي - رقم التليفون)');
+      } else {
+        alert(`تم استيراد (${importedCount}) منسق بنجاح`);
+      }
     } catch { alert('حدث خطأ في استيراد الملف'); }
     e.target.value = '';
   };

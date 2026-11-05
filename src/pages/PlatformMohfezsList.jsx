@@ -11,6 +11,7 @@ function PlatformMohfezsList() {
     platformMohfezs, 
     deletePlatformMohfez, 
     addPlatformMohfez, 
+    addUser,
     hasPermission, 
     platformSessions, 
     deleteAllPlatformMohfezs,
@@ -104,26 +105,22 @@ function PlatformMohfezsList() {
 
   const handleExport = () => {
     const exportData = filtered.map(m => ({
-      'اسم المحفظ': m.name,
-      'رقم السجل': m.registry_no || '',
+      'الاسم': m.name || '',
       'الرقم القومي': m.national_id || '',
-      'تاريخ المسابقة': m.contest_date,
-      'الرواق': m.rowaq,
-      'البريد الإلكتروني': m.email,
-      'الحالة': m.status,
+      'رقم التليفون': m.phone || '',
+      'رقم السجل': m.registry_no || '',
+      'البريد الإلكتروني': m.email || '',
     }));
     exportToXLSX(exportData, 'المحفظين', 'محفظين المنصة');
   };
 
   const handleExportTemplate = () => {
     exportToXLSX([{
-      'اسم المحفظ': '',
-      'رقم السجل': '',
+      'الاسم': '',
       'الرقم القومي': '',
-      'تاريخ المسابقة': '',
-      'الرواق': '',
+      'رقم التليفون': '',
+      'رقم السجل': '',
       'البريد الإلكتروني': '',
-      'الحالة': '',
     }], 'نموذج_استيراد_المحفظين', 'نموذج');
   };
 
@@ -132,18 +129,45 @@ function PlatformMohfezsList() {
     if (!file) return;
     try {
       const rows = await importFromXLSX(file);
-      rows.forEach(row => {
+      let importedCount = 0;
+      rows.forEach((row, idx) => {
+        const name = String(row['الاسم'] || row['اسم المحفظ'] || '').trim();
+        const national_id = String(row['الرقم القومي'] || row['الرقم القومى'] || '').trim();
+        const phone = String(row['رقم التليفون'] || row['رقم الهاتف'] || row['الهاتف'] || row['التليفون'] || '').trim();
+        if (!name || !national_id || !phone) return;
+        const registry_no = String(row['رقم السجل'] || '').trim();
+        const itemId = String(Date.now() + idx + Math.random());
         addPlatformMohfez({
-          name: row['اسم المحفظ'] || '',
-          registry_no: row['رقم السجل'] || '',
-          national_id: row['الرقم القومي'] || '',
-          contest_date: row['تاريخ المسابقة'] || '',
-          rowaq: row['الرواق'] || '',
-          email: row['البريد الإلكتروني'] || '',
-          status: row['الحالة'] || '',
+          id: itemId,
+          name,
+          national_id,
+          phone,
+          registry_no,
+          contest_date: String(row['تاريخ المسابقة'] || '').trim(),
+          rowaq: String(row['الرواق'] || '').trim(),
+          email: String(row['البريد الإلكتروني'] || row['البريد الالكتروني'] || '').trim(),
+          status: String(row['الحالة'] || 'نشط').trim(),
+          username: national_id,
+          password: registry_no || national_id,
         });
+        addUser({
+          id: String(Date.now() + idx + Math.random()),
+          name,
+          email: national_id,
+          username: national_id,
+          password: registry_no || national_id,
+          phone,
+          role: 'platform_mohfez',
+          national_id,
+          record_number: registry_no || national_id,
+        });
+        importedCount++;
       });
-      alert('تم استيراد البيانات بنجاح');
+      if (importedCount === 0) {
+        alert('يرجى التأكد من وجود الأعمدة الأساسية في الملف: (الاسم - الرقم القومي - رقم التليفون)');
+      } else {
+        alert(`تم استيراد (${importedCount}) محفظ بنجاح`);
+      }
     } catch {
       alert('حدث خطأ في استيراد الملف');
     }
@@ -242,8 +266,9 @@ function PlatformMohfezsList() {
           <thead>
             <tr>
               <th>اسم المحفظ</th>
-              <th>رقم السجل</th>
               <th>الرقم القومي</th>
+              <th>رقم التليفون</th>
+              <th>رقم السجل</th>
               <th>تاريخ المسابقة</th>
               <th>الرواق</th>
               <th>الحالة</th>
@@ -253,7 +278,7 @@ function PlatformMohfezsList() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
+                <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
                   لا توجد بيانات.
                 </td>
               </tr>
@@ -261,8 +286,9 @@ function PlatformMohfezsList() {
               filtered.map(m => (
                 <tr key={m.id}>
                   <td>{m.name}</td>
-                  <td>{m.registry_no || '-'}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{m.national_id}</td>
+                  <td style={{ direction: 'ltr', textAlign: 'right' }}>{m.phone || '-'}</td>
+                  <td>{m.registry_no || '-'}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{m.contest_date}</td>
                   <td>{m.rowaq}</td>
                   <td>

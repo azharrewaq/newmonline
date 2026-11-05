@@ -45,8 +45,8 @@ function PlatformCoordinatorsCreate() {
   const handleSubmit = () => {
     
 
-    if (!form.name || !form.national_id || !form.workplace || !form.job_grade) {
-      alert('الرجاء ملء الحقول المطلوبة');
+    if (!form.name || !form.national_id || !form.phone) {
+      alert('الرجاء إدخال الحقول الأساسية: (الاسم - الرقم القومي - رقم التليفون)');
       return;
     }
 
