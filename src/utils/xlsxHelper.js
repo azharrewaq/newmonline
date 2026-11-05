@@ -61,7 +61,7 @@ const buildLookupCatalog = () => {
     },
     {
       title: 'جميع المستويات (أطفال وكبار)',
-      matchHeaders: ['المستوى'],
+      matchHeaders: ['المستوى', 'المستوى المتقدم عليه', 'المستوى وفق الاختبار'],
       values: [...childrenLevels, ...seniorsLevels],
     },
     {

@@ -301,7 +301,8 @@ export const printPlacementExamSheets = (sheets = []) => {
     for (let i = 0; i < totalRows; i++) {
       const a = sheet.rows?.[i] || {};
       const rowaq = normalizeApplicantRowaq(a.rowaq, a.gender) || '';
-      const level = a.level || '';
+      const appliedLevel = a.applied_level || a.level || '';
+      const testedLevel = a.tested_level || '';
       const stoppedSurah = a.stopped_surah || '';
       const prefDays = normalizePreferredDays(a.preferred_days) || '';
       const prefTime = a.preferred_time || '';
@@ -316,7 +317,8 @@ export const printPlacementExamSheets = (sheets = []) => {
           <td class="col-q">${escapeHtml(a.q4 ?? '')}</td>
           <td class="col-q">${escapeHtml(a.q5 ?? '')}</td>
           <td class="col-rowaq">${escapeHtml(rowaq)}</td>
-          <td class="col-level">${escapeHtml(level)}</td>
+          <td class="col-level">${escapeHtml(appliedLevel)}</td>
+          <td class="col-level">${escapeHtml(testedLevel)}</td>
           <td class="col-surah">${escapeHtml(stoppedSurah)}</td>
           <td class="col-days">${escapeHtml(prefDays)}</td>
           <td class="col-time">${escapeHtml(prefTime)}</td>
@@ -353,19 +355,20 @@ export const printPlacementExamSheets = (sheets = []) => {
         <table class="exam-table">
           <thead>
             <tr>
-              <th style="width: 30px;">م</th>
-              <th style="width: 15%;">الاسم</th>
-              <th style="width: 11%;">الرقم القومى</th>
-              <th style="width: 5.5%;">درجة السؤال الأول</th>
-              <th style="width: 5.5%;">درجة السؤال الثانى</th>
-              <th style="width: 5.5%;">درجة السؤال الثالث</th>
-              <th style="width: 5.5%;">درجة السؤال الرابع</th>
-              <th style="width: 5.5%;">درجة السؤال الخامس</th>
-              <th style="width: 11%;">الرواق</th>
-              <th style="width: 10%;">المستوى</th>
-              <th style="width: 8%;">السورة المتوقف عندها</th>
-              <th style="width: 7.5%;">الأيام المناسبة</th>
-              <th style="width: 7.5%;">الساعة المناسبة</th>
+              <th style="width: 28px;">م</th>
+              <th style="width: 14%;">الاسم</th>
+              <th style="width: 10%;">الرقم القومى</th>
+              <th style="width: 5%;">درجة السؤال الأول</th>
+              <th style="width: 5%;">درجة السؤال الثانى</th>
+              <th style="width: 5%;">درجة السؤال الثالث</th>
+              <th style="width: 5%;">درجة السؤال الرابع</th>
+              <th style="width: 5%;">درجة السؤال الخامس</th>
+              <th style="width: 10%;">الرواق</th>
+              <th style="width: 8.5%;">المستوى المتقدم عليه</th>
+              <th style="width: 8.5%;">المستوى وفق الاختبار</th>
+              <th style="width: 7%;">السورة المتوقف عندها</th>
+              <th style="width: 7%;">الأيام المناسبة</th>
+              <th style="width: 7%;">الساعة المناسبة</th>
             </tr>
           </thead>
           <tbody>

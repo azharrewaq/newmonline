@@ -90,7 +90,9 @@ function PlatformApplicantsList() {
 
       const normRowaq = normalizeApplicantRowaq(a.rowaq, a.gender);
       if (filterRowaq && normRowaq !== filterRowaq) return false;
-      if (filterLevel && (a.level || '') !== filterLevel) return false;
+      const appLevel = a.applied_level || a.level || '';
+      const testLevel = a.tested_level || '';
+      if (filterLevel && appLevel !== filterLevel && testLevel !== filterLevel) return false;
       if (filterGroupNo && String(a.group_no || '') !== String(filterGroupNo)) return false;
       if (filterCoordinator) {
         const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
@@ -122,7 +124,12 @@ function PlatformApplicantsList() {
     const patch = { [field]: value };
     if (field === 'rowaq') {
       patch.level = '';
+      patch.applied_level = '';
+      patch.tested_level = '';
       patch.gender = value.includes('سيدات') || value.includes('نساء') ? 'أنثى' : (value.includes('رجال') ? 'ذكر' : 'أطفال');
+    }
+    if (field === 'applied_level') {
+      patch.level = value;
     }
     if (field === 'group_no') {
       const grp = placementGroups.find(g => String(g.group_no) === String(value));
@@ -135,9 +142,10 @@ function PlatformApplicantsList() {
     }
     // إذا تم تحديد الرواق والمستوى والسورة نحدّث الحالة تلقائياً إلى "تم تحديد المستوى"
     const nextRowaq = field === 'rowaq' ? value : applicant.rowaq;
-    const nextLevel = field === 'level' ? value : (field === 'rowaq' ? '' : applicant.level);
+    const nextTested = field === 'tested_level' ? value : (field === 'rowaq' ? '' : applicant.tested_level);
+    const nextApplied = field === 'applied_level' ? value : (field === 'rowaq' ? '' : (applicant.applied_level || applicant.level));
     const nextSurah = field === 'stopped_surah' ? value : applicant.stopped_surah;
-    if (nextRowaq && nextLevel && nextSurah) {
+    if (nextRowaq && (nextTested || (nextApplied && nextSurah))) {
       patch.status = 'تم تحديد المستوى';
     }
     updatePlatformApplicant(applicant.id, patch);
@@ -204,7 +212,8 @@ function PlatformApplicantsList() {
         'الاسم': a.name || '',
         'الرقم القومي أو جواز السفر': a.national_id || a.passport_no || '',
         'الرواق': normalizeApplicantRowaq(a.rowaq, a.gender) || '',
-        'المستوى': a.level || '',
+        'المستوى المتقدم عليه': a.applied_level || a.level || '',
+        'المستوى وفق الاختبار': a.tested_level || '',
         'السورة المتوقف عندها': a.stopped_surah || '',
         'الأيام المناسبة': normalizePreferredDays(a.preferred_days) || '',
         'التوقيت المناسب': a.preferred_time || '',
@@ -215,7 +224,6 @@ function PlatformApplicantsList() {
         'تاريخ الاختبار': a.exam_date || '',
         'توقيت الاختبار': a.exam_time || grp?.time_start || '',
         'رابط تيمز': a.teams_link || grp?.teams_link || '',
-        'الحالة': a.status || 'في انتظار الاختبار',
       };
     });
     exportToXLSX(exportData, 'المتقدمين_الجدد_تحديد_المستوى', 'المتقدمين الجدد');
@@ -227,7 +235,8 @@ function PlatformApplicantsList() {
       'الاسم': '',
       'الرقم القومي أو جواز السفر': '',
       'الرواق': '',
-      'المستوى': '',
+      'المستوى المتقدم عليه': '',
+      'المستوى وفق الاختبار': '',
       'السورة المتوقف عندها': '',
       'الأيام المناسبة': '',
       'التوقيت المناسب': '',
@@ -274,7 +283,9 @@ function PlatformApplicantsList() {
         const rawRowaq = row['الرواق'] || '';
         const rawGender = row['الجنس'] || '';
         const normRowaq = normalizeApplicantRowaq(rawRowaq, rawGender);
-        const level = String(row['المستوى'] || '').trim();
+        const appliedLevel = String(row['المستوى المتقدم عليه'] || row['المستوى'] || '').trim();
+        const testedLevel = String(row['المستوى وفق الاختبار'] || '').trim();
+        const level = testedLevel || appliedLevel;
         const stoppedSurah = String(row['السورة المتوقف عندها'] || row['السورة'] || '').replace(/^سورة\s+/, '').trim();
         const preferredDays = normalizePreferredDays(String(row['الأيام المناسبة'] || row['الايام المناسبة'] || '').trim());
         const preferredTime = String(row['التوقيت المناسب'] || '').trim();
@@ -302,6 +313,8 @@ function PlatformApplicantsList() {
           rowaq: APPLICANT_ROWAQ_OPTIONS.includes(normRowaq) ? normRowaq : '',
           gender,
           level,
+          applied_level: appliedLevel,
+          tested_level: testedLevel,
           stopped_surah: stoppedSurah,
           preferred_days: preferredDays,
           preferred_time: preferredTime,
@@ -352,14 +365,15 @@ function PlatformApplicantsList() {
     const map = {};
     platformApplicants.forEach(a => {
       const r = normalizeApplicantRowaq(a.rowaq, a.gender);
-      if (!r || !a.level) return;
+      const effLevel = a.tested_level || a.applied_level || a.level || '';
+      if (!r || !effLevel) return;
       const normDays = normalizePreferredDays(a.preferred_days);
-      const key = `${r} || ${a.level} || ${a.stopped_surah || 'غير محدد'} || ${normDays || 'غير محدد'} || ${a.preferred_time || 'غير محدد'}`;
+      const key = `${r} || ${effLevel} || ${a.stopped_surah || 'غير محدد'} || ${normDays || 'غير محدد'} || ${a.preferred_time || 'غير محدد'}`;
       if (!map[key]) {
         map[key] = {
           key,
           rowaq: r,
-          level: a.level,
+          level: effLevel,
           stopped_surah: a.stopped_surah || '-',
           preferred_days: normDays || '-',
           preferred_time: a.preferred_time || '-',
@@ -592,7 +606,8 @@ function PlatformApplicantsList() {
                   <th style={{ textAlign: 'center' }}>الاسم</th>
                   {!isMohfez && <th style={{ textAlign: 'center' }}>الرقم القومي / جواز السفر</th>}
                   <th style={{ textAlign: 'center' }}>الرواق</th>
-                  <th style={{ textAlign: 'center' }}>المستوى</th>
+                  <th style={{ textAlign: 'center' }}>المستوى المتقدم عليه</th>
+                  <th style={{ textAlign: 'center' }}>المستوى وفق الاختبار</th>
                   <th style={{ textAlign: 'center' }}>السورة المتوقف عندها</th>
                   <th style={{ textAlign: 'center' }}>الأيام المناسبة</th>
                   <th style={{ textAlign: 'center' }}>التوقيت المناسب</th>
@@ -604,7 +619,7 @@ function PlatformApplicantsList() {
               <tbody>
                 {paginated.length === 0 ? (
                   <tr>
-                    <td colSpan={isMohfez ? 10 : 11} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
+                    <td colSpan={isMohfez ? 11 : 12} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
                       لا توجد بيانات متقدمين حالياً (سيتم تسكين ورفع بيانات الدارسين لاحقاً).
                     </td>
                   </tr>
@@ -635,16 +650,30 @@ function PlatformApplicantsList() {
                           </select>
                         </td>
 
-                        {/* المستوى المرتبط بنوع الرواق */}
-                        <td style={{ minWidth: 190 }}>
+                        {/* المستوى المتقدم عليه (مرتبط بنوع الرواق) */}
+                        <td style={{ minWidth: 175 }}>
                           <select
                             className="form-select"
                             style={{ padding: '4px 8px', fontSize: 13 }}
-                            value={a.level || ''}
+                            value={a.applied_level || a.level || ''}
                             disabled={!rowRowaq}
-                            onChange={e => handleInlineUpdate(a, 'level', e.target.value)}
+                            onChange={e => handleInlineUpdate(a, 'applied_level', e.target.value)}
                           >
-                            <option value="">{rowRowaq ? '-- اختر المستوى --' : 'اختر الرواق أولاً'}</option>
+                            <option value="">{rowRowaq ? '-- المستوى المتقدم عليه --' : 'اختر الرواق أولاً'}</option>
+                            {rowLevels.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
+                          </select>
+                        </td>
+
+                        {/* المستوى وفق الاختبار (مرتبط بنوع الرواق) */}
+                        <td style={{ minWidth: 175 }}>
+                          <select
+                            className="form-select"
+                            style={{ padding: '4px 8px', fontSize: 13 }}
+                            value={a.tested_level || ''}
+                            disabled={!rowRowaq}
+                            onChange={e => handleInlineUpdate(a, 'tested_level', e.target.value)}
+                          >
+                            <option value="">{rowRowaq ? '-- المستوى وفق الاختبار --' : 'اختر الرواق أولاً'}</option>
                             {rowLevels.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
                           </select>
                         </td>
@@ -961,7 +990,8 @@ function PlatformApplicantsList() {
                               'الاسم': m.name,
                               'الرقم القومي أو جواز السفر': m.national_id || m.passport_no || '',
                               'الرواق': b.rowaq,
-                              'المستوى': b.level,
+                              'المستوى المتقدم عليه': m.applied_level || m.level || '',
+                              'المستوى وفق الاختبار': m.tested_level || b.level || '',
                               'السورة المتوقف عندها': b.stopped_surah,
                               'الأيام المناسبة': b.preferred_days,
                               'التوقيت المناسب': b.preferred_time,

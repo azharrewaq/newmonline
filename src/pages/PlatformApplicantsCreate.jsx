@@ -35,6 +35,8 @@ function PlatformApplicantsCreate() {
     phone: '',
     rowaq: '',
     level: '',
+    applied_level: '',
+    tested_level: '',
     stopped_surah: '',
     preferred_days: '',
     preferred_time: '',
@@ -52,7 +54,11 @@ function PlatformApplicantsCreate() {
     if (name === 'phone') {
       setForm(prev => ({ ...prev, phone: value.replace(/\D/g, '') }));
     } else if (name === 'rowaq') {
-      setForm(prev => ({ ...prev, rowaq: value, level: '' }));
+      setForm(prev => ({ ...prev, rowaq: value, level: '', applied_level: '', tested_level: '' }));
+    } else if (name === 'applied_level') {
+      setForm(prev => ({ ...prev, applied_level: value, level: prev.tested_level || value }));
+    } else if (name === 'tested_level') {
+      setForm(prev => ({ ...prev, tested_level: value, level: value || prev.applied_level }));
     } else if (name === 'group_no') {
       const grp = placementGroups.find(g => String(g.group_no) === String(value));
       setForm(prev => ({
@@ -78,6 +84,8 @@ function PlatformApplicantsCreate() {
           phone: a.phone || '',
           rowaq: normalizeApplicantRowaq(a.rowaq, a.gender) || '',
           level: a.level || '',
+          applied_level: a.applied_level || a.level || '',
+          tested_level: a.tested_level || '',
           stopped_surah: a.stopped_surah || '',
           preferred_days: normalizePreferredDays(a.preferred_days) || '',
           preferred_time: a.preferred_time || '',
@@ -199,9 +207,17 @@ function PlatformApplicantsCreate() {
           </div>
 
           <div className="form-group">
-            <label>المستوى (مرتبط بنوع الرواق)</label>
-            <select name="level" className="form-select" value={form.level} onChange={handleChange} disabled={!form.rowaq}>
-              <option value="">{form.rowaq ? '--- اختر المستوى ---' : 'اختر الرواق أولاً'}</option>
+            <label>المستوى المتقدم عليه (مرتبط بنوع الرواق)</label>
+            <select name="applied_level" className="form-select" value={form.applied_level} onChange={handleChange} disabled={!form.rowaq}>
+              <option value="">{form.rowaq ? '--- اختر المستوى المتقدم عليه ---' : 'اختر الرواق أولاً'}</option>
+              {availableLevels.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>المستوى وفق الاختبار (مرتبط بنوع الرواق)</label>
+            <select name="tested_level" className="form-select" value={form.tested_level} onChange={handleChange} disabled={!form.rowaq}>
+              <option value="">{form.rowaq ? '--- اختر المستوى وفق الاختبار ---' : 'اختر الرواق أولاً'}</option>
               {availableLevels.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
             </select>
           </div>
