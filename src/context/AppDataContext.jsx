@@ -7,10 +7,11 @@ import {
   platformMohfezsAPI, platformSessionsAPI, platformStudentsAPI, platformApplicantsAPI,
   platformRowaqsAPI, administrationsAPI, rolePermissionsAPI,
   shariaCoursesAPI, shariaBranchesAPI, shariaStudentsAPI, shariaTeachersAPI, shariaLivesAPI, shariaDailyReportsAPI, shariaNewsAPI,
-  holidaysAPI, announcementsAPI, announcementRepliesAPI, staffAttendancesAPI, substitutionsAPI
+  holidaysAPI, announcementsAPI, announcementRepliesAPI, staffAttendancesAPI, substitutionsAPI, placementGroupsAPI
 } from '../utils/apiService';
 import { setActiveSubstitutions } from '../utils/userScopeHelper';
 import { findStudentRecord, getStudentsOfSession, toLocalDateStr } from '../utils/sessionHelpers';
+import { createDefaultPlacementGroups } from '../utils/placementHelpers';
 
 const AppDataContext = createContext(null);
 
@@ -344,6 +345,10 @@ export function AppDataProvider({ children }) {
   const [platformSessions, setPlatformSessions] = useState(() => getFromLocalStorage('platformSessions', []));
   const [platformStudents, setPlatformStudents] = useState(() => getFromLocalStorage('platformStudents', []));
   const [platformApplicants, setPlatformApplicants] = useState(() => getFromLocalStorage('platformApplicants', []));
+  const [placementGroups, setPlacementGroups] = useState(() => {
+    const stored = getFromLocalStorage('placementGroups', []);
+    return Array.isArray(stored) && stored.length === 40 ? stored : createDefaultPlacementGroups();
+  });
   const [platformRowaqs, setPlatformRowaqs] = useState(() => getFromLocalStorage('platformRowaqs', []));
   const [administrations, setAdministrations] = useState(() => {
     const defaultAdmins = Object.keys(egyptCenters).map((gov, index) => ({
@@ -580,6 +585,22 @@ export function AppDataProvider({ children }) {
         await syncCollection(platformSessionsAPI, platformSessions, setPlatformSessions, 'platformSessions');
         await syncCollection(platformStudentsAPI, platformStudents, setPlatformStudents, 'platformStudents');
         await syncCollection(platformApplicantsAPI, platformApplicants, setPlatformApplicants, 'platformApplicants');
+        // مزامنة الـ 40 مجموعة لتحديد المستوى (20 مجموعة 6-8 م + 20 مجموعة 8-10 م)
+        const remotePG = await placementGroupsAPI.getAll().catch(() => null);
+        if (remotePG) {
+          if (remotePG.length === 0) {
+            const defaults = createDefaultPlacementGroups();
+            placementGroupsAPI.bulkImport(defaults).catch(() => {});
+            setPlacementGroups(defaults);
+            saveToLocalStorage('placementGroups', defaults);
+          } else {
+            const normPG = remotePG
+              .map(g => ({ ...g, id: g.id || g._id }))
+              .sort((a, b) => (Number(a.group_no) || 0) - (Number(b.group_no) || 0));
+            setPlacementGroups(normPG);
+            saveToLocalStorage('placementGroups', normPG);
+          }
+        }
         await syncCollection(platformRowaqsAPI, platformRowaqs, setPlatformRowaqs, 'platformRowaqs');
 
         await syncCollection(administrationsAPI, administrations, setAdministrations, 'administrations');
@@ -1774,6 +1795,12 @@ export function AppDataProvider({ children }) {
   useEffect(() => { saveToLocalStorage('announcementReplies', announcementReplies); }, [announcementReplies]);
   useEffect(() => { saveToLocalStorage('staffAttendances', staffAttendances); }, [staffAttendances]);
   useEffect(() => { saveToLocalStorage('substitutions', substitutions); }, [substitutions]);
+  useEffect(() => { saveToLocalStorage('placementGroups', placementGroups); }, [placementGroups]);
+
+  const updatePlacementGroup = (id, updatedData) => {
+    setPlacementGroups(prev => prev.map(g => String(g.id) === String(id) ? { ...g, ...updatedData } : g));
+    placementGroupsAPI.update(id, updatedData).catch(err => console.error(err));
+  };
 
   // تعيين محفظ بديل لحلقة في يوم محدد (يستبدل أي بديل سابق لنفس الحلقة واليوم)
   const addSubstitution = (sub) => {
@@ -2073,6 +2100,50 @@ export function AppDataProvider({ children }) {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
       setPlatformApplicants(prev => prev.filter(m => String(m.id) !== String(id)));
       platformApplicantsAPI.delete(id).catch(err => console.error(err));
+    }
+  };
+
+  const bulkImportPlatformApplicants = async (applicantList, userList = []) => {
+    const newApplicants = applicantList.map(a => ({
+      ...a,
+      id: a.id || String(Date.now() + Math.random())
+    }));
+
+    try {
+      await platformApplicantsAPI.bulkImport(newApplicants);
+    } catch (err) {
+      console.error('Failed platform applicants bulk import:', err);
+      alert('فشل حفظ المتقدمين في قاعدة البيانات: ' + err.message);
+      throw err;
+    }
+
+    setPlatformApplicants(prev => {
+      const next = [...prev, ...newApplicants];
+      saveToLocalStorage('platformApplicants', next);
+      return next;
+    });
+
+    if (userList && userList.length > 0) {
+      const newUsers = userList.map(u => ({
+        ...u,
+        id: u.id || String(Date.now() + Math.random()),
+        created_at: new Date().toLocaleDateString('ar-EG')
+      }));
+      try {
+        await usersAPI.bulkImport(newUsers);
+      } catch (err) {
+        console.error('Failed bulk import applicant users:', err);
+      }
+      setUsers(prev => {
+        const uniqueUsers = [...prev];
+        newUsers.forEach(nu => {
+          if (!uniqueUsers.some(u => String(u.national_id).trim() === String(nu.national_id).trim())) {
+            uniqueUsers.push(nu);
+          }
+        });
+        saveToLocalStorage('users', uniqueUsers);
+        return uniqueUsers;
+      });
     }
   };
 
@@ -2493,7 +2564,8 @@ export function AppDataProvider({ children }) {
       platformMohfezs, addPlatformMohfez, updatePlatformMohfez, deletePlatformMohfez, deleteAllPlatformMohfezs,
       platformSessions, addPlatformSession, updatePlatformSession, deletePlatformSession, deleteAllPlatformSessions,
       platformStudents, addPlatformStudent, updatePlatformStudent, deletePlatformStudent, deleteAllPlatformStudents, bulkImportPlatformStudents,
-      platformApplicants, addPlatformApplicant, updatePlatformApplicant, deletePlatformApplicant, deleteAllPlatformApplicants,
+      platformApplicants, addPlatformApplicant, updatePlatformApplicant, deletePlatformApplicant, deleteAllPlatformApplicants, bulkImportPlatformApplicants,
+      placementGroups, updatePlacementGroup,
       platformRowaqs, addPlatformRowaq, updatePlatformRowaq, deletePlatformRowaq,
 
       shariaCourses, addShariaCourse, updateShariaCourse, deleteShariaCourse,

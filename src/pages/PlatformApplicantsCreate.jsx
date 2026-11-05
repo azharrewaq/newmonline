@@ -2,120 +2,162 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
-
-const parts = Array.from({ length: 30 }, (_, i) => `الجزء ${i + 1}`);
+import { quranSurahs } from '../data/quranSurahs';
+import {
+  APPLICANT_ROWAQ_OPTIONS,
+  getLevelsForApplicantRowaq,
+  normalizeApplicantRowaq,
+  PREFERRED_DAYS_OPTIONS,
+  PREFERRED_TIME_OPTIONS,
+} from '../utils/placementHelpers';
 
 function PlatformApplicantsCreate() {
-  const { addPlatformApplicant, updatePlatformApplicant, platformApplicants, users, addUser, updateUser } = useAppData();
+  const {
+    addPlatformApplicant,
+    updatePlatformApplicant,
+    platformApplicants,
+    placementGroups = [],
+    platformMohfezs = [],
+    platformCoordinators = [],
+    users,
+    addUser,
+    updateUser
+  } = useAppData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const applicantId = searchParams.get('id');
   const isEditing = !!applicantId;
-  
+
   const [form, setForm] = useState({
-    name: '', national_id: '', birth_date: '', phone: '', gender: '', address: '',
-    rowaq: '', memorization_from: '', memorization_to: '', status: 'قيد المراجعة', username: '', password: ''
+    name: '',
+    national_id: '',
+    phone: '',
+    rowaq: '',
+    level: '',
+    stopped_surah: '',
+    preferred_days: '',
+    preferred_time: '',
+    group_no: '',
+    mohfez: '',
+    coordinator: '',
+    exam_date: '',
+    exam_time: '',
+    teams_link: '',
+    status: 'في انتظار الاختبار',
   });
 
-  const handleChange = e => {
+  const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === 'phone') {
-      setForm({ ...form, phone: value.replace(/\D/g, '') });
+      setForm(prev => ({ ...prev, phone: value.replace(/\D/g, '') }));
+    } else if (name === 'rowaq') {
+      setForm(prev => ({ ...prev, rowaq: value, level: '' }));
+    } else if (name === 'group_no') {
+      const grp = placementGroups.find(g => String(g.group_no) === String(value));
+      setForm(prev => ({
+        ...prev,
+        group_no: value,
+        mohfez: grp?.mohfez || prev.mohfez,
+        coordinator: grp?.coordinator || prev.coordinator,
+        exam_time: grp?.time_start || prev.exam_time,
+        teams_link: grp?.teams_link || prev.teams_link,
+      }));
     } else {
-      setForm({ ...form, [name]: value });
+      setForm(prev => ({ ...prev, [name]: value }));
     }
   };
 
   useEffect(() => {
     if (isEditing && applicantId) {
-      const applicantToEdit = platformApplicants.find(a => String(a.id) === String(applicantId));
-      if (applicantToEdit) {
+      const a = platformApplicants.find(x => String(x.id) === String(applicantId));
+      if (a) {
         setForm({
-          name: applicantToEdit.name || '',
-          national_id: applicantToEdit.national_id || '',
-          birth_date: applicantToEdit.birth_date || '',
-          phone: applicantToEdit.phone || '',
-          gender: applicantToEdit.gender || '',
-          address: applicantToEdit.address || '',
-          rowaq: applicantToEdit.rowaq || '',
-          memorization_from: applicantToEdit.memorization_from || '',
-          memorization_to: applicantToEdit.memorization_to || '',
-          status: applicantToEdit.status || 'قيد المراجعة',
-          username: applicantToEdit.username || '',
-          password: applicantToEdit.password || ''
+          name: a.name || '',
+          national_id: a.national_id || a.passport_no || '',
+          phone: a.phone || '',
+          rowaq: normalizeApplicantRowaq(a.rowaq, a.gender) || '',
+          level: a.level || '',
+          stopped_surah: a.stopped_surah || '',
+          preferred_days: a.preferred_days || '',
+          preferred_time: a.preferred_time || '',
+          group_no: a.group_no || '',
+          mohfez: a.mohfez || '',
+          coordinator: a.coordinator || '',
+          exam_date: a.exam_date || '',
+          exam_time: a.exam_time || '',
+          teams_link: a.teams_link || '',
+          status: a.status || 'في انتظار الاختبار',
         });
       }
     }
   }, [isEditing, applicantId, platformApplicants]);
 
-  const handleSubmit = () => {
-    
+  const availableLevels = getLevelsForApplicantRowaq(form.rowaq);
 
-    if (!form.name || !form.national_id || !form.phone || !form.rowaq) {
-      alert('الرجاء ملء الحقول المطلوبة');
+  const handleSubmit = () => {
+    if (!form.name.trim() || !form.national_id.trim()) {
+      alert('الرجاء إدخال الاسم والرقم القومي / جواز السفر');
       return;
     }
 
-    // Check duplicate national ID
-    const duplicateApplicant = platformApplicants.find(a => 
-      String(a.national_id).trim() === String(form.national_id).trim() && 
+    const nid = String(form.national_id).trim();
+    const duplicateApplicant = platformApplicants.find(a =>
+      String(a.national_id || a.passport_no || '').trim() === nid &&
       (!isEditing || String(a.id) !== String(applicantId))
     );
     if (duplicateApplicant) {
-      alert('خطأ: الرقم القومي مسجل بالفعل لمتقدم آخر.');
+      alert('خطأ: الرقم القومي / جواز السفر مسجل بالفعل لمتقدم آخر.');
       return;
     }
 
+    const gender = form.rowaq === 'كبار نساء' ? 'أنثى' : (form.rowaq === 'كبار رجال' ? 'ذكر' : 'أطفال');
     const finalForm = {
       ...form,
-      username: form.national_id,
-      password: form.national_id
+      name: form.name.trim(),
+      national_id: nid,
+      passport_no: nid,
+      gender,
+      username: nid,
+      password: nid,
+      register_date: form.register_date || new Date().toLocaleDateString('ar-EG'),
     };
-    
-    const existingUser = users.find(u => u.national_id === form.national_id || u.email === form.national_id);
+
+    const existingUser = users.find(u => String(u.national_id || u.email || '').trim() === nid);
 
     if (isEditing) {
       updatePlatformApplicant(applicantId, finalForm);
       if (existingUser) {
         updateUser(existingUser.id, {
-          name: form.name,
-          phone: form.phone,
-          email: form.national_id,
-          password: form.national_id,
-          national_id: form.national_id
+          name: finalForm.name,
+          phone: finalForm.phone,
+          email: nid,
+          password: nid,
+          national_id: nid,
         });
       } else {
         addUser({
-          name: form.name,
-          email: form.national_id,
-          password: form.national_id,
-          phone: form.phone,
+          name: finalForm.name,
+          email: nid,
+          password: nid,
+          phone: finalForm.phone,
           role: 'student',
-          national_id: form.national_id
+          national_id: nid,
         });
       }
-      alert('تم تحديث الطلب بنجاح');
+      alert('تم تحديث بيانات المتقدم بنجاح');
     } else {
       addPlatformApplicant(finalForm);
-      if (existingUser) {
-        updateUser(existingUser.id, {
-          name: form.name,
-          phone: form.phone,
-          role: 'student',
-          email: form.national_id,
-          national_id: form.national_id
-        });
-      } else {
+      if (!existingUser) {
         addUser({
-          name: form.name,
-          email: form.national_id,
-          password: form.national_id,
-          phone: form.phone,
+          name: finalForm.name,
+          email: nid,
+          password: nid,
+          phone: finalForm.phone,
           role: 'student',
-          national_id: form.national_id
+          national_id: nid,
         });
       }
-      alert('تم إضافة الطلب بنجاح');
+      alert('تم إضافة المتقدم بنجاح');
     }
     navigate('/platform-applicants');
   };
@@ -123,89 +165,137 @@ function PlatformApplicantsCreate() {
   return (
     <div className="management-page">
       <div className="page-header" style={{ marginBottom: '20px' }}>
-        <h2 style={{ textAlign: 'center', width: '100%' }}>{isEditing ? 'تعديل طلب التحاق' : 'إضافة طلب التحاق جديد'}</h2>
+        <h2 style={{ textAlign: 'center', width: '100%' }}>
+          {isEditing ? 'تعديل بيانات المتقدم وتحديد المستوى' : 'إضافة متقدم جديد'}
+        </h2>
       </div>
 
-      <div className="form-wrapper box-card" style={{ maxWidth: '800px', margin: '0 auto' }}>
-        <h3 style={{ marginBottom: '20px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', padding: '10px', fontSize: '18px' }}>المعلومات الشخصية</h3>
-        
-        <div className="form-grid" style={{ marginBottom: '30px', gridTemplateColumns: 'repeat(2, 1fr)' }}>
-          <div className="form-group">
-            <label>الاسم الكامل <span className="req">*</span></label>
-            <input name="name" type="text" className="form-input" placeholder="أدخل الاسم الكامل" value={form.name} onChange={handleChange} />
-          </div>
-          <div className="form-group">
-            <label>الرقم القومي <span className="req">*</span></label>
-            <input name="national_id" type="text" className="form-input" placeholder="أدخل الرقم القومي" value={form.national_id} onChange={handleChange} />
-          </div>
- 
-          <div className="form-group">
-            <label>رقم الهاتف <span className="req">*</span></label>
-            <div style={{ display: 'flex' }}>
-               
-               <input name="phone" type="text" className="form-input" placeholder="أدخل رقم الهاتف" value={form.phone} onChange={handleChange} style={{ borderRadius: '6px', flex: 1 }} dir="ltr"  />
-            </div>
-          </div>
-          <div className="form-group">
-            <label>اختر التاريخ <span className="req">*</span></label>
-            <input name="birth_date" type="date" className="form-input" value={form.birth_date} onChange={handleChange} />
-          </div>
- 
-          <div className="form-group">
-            <label>الجنس <span className="req">*</span></label>
-            <select name="gender" className="form-select" value={form.gender} onChange={handleChange}>
-              <option value="">اختار الجنس</option>
-              <option value="ذكر">ذكر</option>
-              <option value="أنثى">أنثى</option>
-            </select>
-          </div>
-        </div>
+      <div className="form-wrapper box-card" style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <h3 style={{ marginBottom: '20px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', padding: '10px', fontSize: '18px' }}>
+          البيانات الأساسية وتحديد المستوى
+        </h3>
 
-        <div className="form-group" style={{ marginBottom: '30px' }}>
-           <label>العنوان <span className="req">*</span></label>
-           <textarea name="address" className="form-input textarea" placeholder="أدخل العنوان التفصيلي" value={form.address} onChange={handleChange}></textarea>
-        </div>
-
-        <h3 style={{ marginBottom: '20px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', padding: '10px', fontSize: '18px' }}>معلومات الالتحاق</h3>
-
-        <div className="form-grid" style={{ marginBottom: '20px', gridTemplateColumns: 'repeat(2, 1fr)' }}>
+        <div className="form-grid" style={{ marginBottom: '24px', gridTemplateColumns: 'repeat(3, 1fr)' }}>
           <div className="form-group">
-            <label>الرواق <span className="req">*</span></label>
+            <label>الاسم <span className="req">*</span></label>
+            <input name="name" type="text" className="form-input" placeholder="الاسم الكامل" value={form.name} onChange={handleChange} />
+          </div>
+          <div className="form-group">
+            <label>الرقم القومي أو جواز السفر <span className="req">*</span></label>
+            <input name="national_id" type="text" className="form-input" placeholder="الرقم القومي / جواز السفر" value={form.national_id} onChange={handleChange} />
+          </div>
+          <div className="form-group">
+            <label>رقم الهاتف (اختياري)</label>
+            <input name="phone" type="text" className="form-input" placeholder="رقم الهاتف" value={form.phone} onChange={handleChange} dir="ltr" />
+          </div>
+
+          <div className="form-group">
+            <label>الرواق</label>
             <select name="rowaq" className="form-select" value={form.rowaq} onChange={handleChange}>
-              <option value="">اختار الرواق</option>
-              <option value="رواق القرآن الكريم ( أطفال )">رواق القرآن الكريم ( أطفال )</option>
-              <option value="رواق القرآن الكريم ( كبار )">رواق القرآن الكريم ( كبار )</option>
-              <option value="رواق التجويد">رواق التجويد</option>
-              <option value="رواق القراءات">رواق القراءات</option>
+              <option value="">--- اختر الرواق ---</option>
+              {APPLICANT_ROWAQ_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
-        </div>
 
-        <div className="form-grid" style={{ marginBottom: '30px', gridTemplateColumns: 'repeat(3, 1fr)' }}>
           <div className="form-group">
-            <label>مقدار الحفظ (من) <span className="req">*</span></label>
-            <select name="memorization_from" className="form-select" value={form.memorization_from} onChange={handleChange}>
-              <option value="">اختار الجزء</option>
-              {parts.map(p => <option key={p} value={p}>{p}</option>)}
+            <label>المستوى (مرتبط بنوع الرواق)</label>
+            <select name="level" className="form-select" value={form.level} onChange={handleChange} disabled={!form.rowaq}>
+              <option value="">{form.rowaq ? '--- اختر المستوى ---' : 'اختر الرواق أولاً'}</option>
+              {availableLevels.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
             </select>
           </div>
+
           <div className="form-group">
-            <label>مقدار الحفظ (إلى) <span className="req">*</span></label>
-            <select name="memorization_to" className="form-select" value={form.memorization_to} onChange={handleChange}>
-              <option value="">اختار الجزء</option>
-              {parts.map(p => <option key={p} value={p}>{p}</option>)}
+            <label>السورة المتوقف عندها الدارس</label>
+            <select name="stopped_surah" className="form-select" value={form.stopped_surah} onChange={handleChange}>
+              <option value="">--- اختر السورة ---</option>
+              {quranSurahs.map(s => <option key={s.id} value={s.name}>{s.id} - سورة {s.name}</option>)}
             </select>
           </div>
+
           <div className="form-group">
-            <label>الحالة <span className="req">*</span></label>
+            <label>الأيام المناسبة للدارس</label>
+            <select name="preferred_days" className="form-select" value={form.preferred_days} onChange={handleChange}>
+              <option value="">--- اختر اليومين ---</option>
+              {PREFERRED_DAYS_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>التوقيت المناسب للدارس</label>
+            <select name="preferred_time" className="form-select" value={form.preferred_time} onChange={handleChange}>
+              <option value="">--- اختر التوقيت ---</option>
+              {PREFERRED_TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>حالة التقييم</label>
             <select name="status" className="form-select" value={form.status} onChange={handleChange}>
-              <option value="قيد المراجعة">قيد المراجعة</option>
-              <option value="مقبول">مقبول</option>
-              <option value="مرفوض">مرفوض</option>
+              <option value="في انتظار الاختبار">في انتظار الاختبار</option>
+              <option value="تم تحديد المستوى">تم تحديد المستوى</option>
+              <option value="غائب">غائب</option>
             </select>
           </div>
         </div>
 
+        <h3 style={{ marginBottom: '20px', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', padding: '10px', fontSize: '18px' }}>
+          تسكين مجموعة ولجنة اختبار تحديد المستوى (يمكن تركها لاحقاً)
+        </h3>
+
+        <div className="form-grid" style={{ marginBottom: '20px', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="form-group">
+            <label>رقم المجموعة (1 - 40)</label>
+            <select name="group_no" className="form-select" value={form.group_no} onChange={handleChange}>
+              <option value="">--- بدون مجموعة حالياً ---</option>
+              <optgroup label="الفترة الأولى: من 6 إلى 8 مساءً (مجموعات 1 - 20)">
+                {placementGroups.filter(g => g.group_no <= 20).map(g => (
+                  <option key={g.group_no} value={g.group_no}>
+                    مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''} — من 6 إلى 8 م
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="الفترة الثانية: من 8 إلى 10 مساءً (مجموعات 21 - 40)">
+                {placementGroups.filter(g => g.group_no > 20).map(g => (
+                  <option key={g.group_no} value={g.group_no}>
+                    مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''} — من 8 إلى 10 م
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>المحفظ الممتحن</label>
+            <select name="mohfez" className="form-select" value={form.mohfez} onChange={handleChange}>
+              <option value="">--- اختر المحفظ ---</option>
+              {platformMohfezs.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>المنسق المشرف</label>
+            <select name="coordinator" className="form-select" value={form.coordinator} onChange={handleChange}>
+              <option value="">--- اختر المنسق ---</option>
+              {platformCoordinators.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>تاريخ يوم الاختبار</label>
+            <input name="exam_date" type="date" className="form-input" value={form.exam_date} onChange={handleChange} />
+          </div>
+
+          <div className="form-group">
+            <label>توقيت الاختبار (يظهر الرابط قبله بـ 15 د وبعده بـ 30 د)</label>
+            <input name="exam_time" type="time" className="form-input" value={form.exam_time} onChange={handleChange} />
+          </div>
+
+          <div className="form-group">
+            <label>رابط تيمز (Teams)</label>
+            <input name="teams_link" type="text" className="form-input" placeholder="رابط اجتماع Teams" value={form.teams_link} onChange={handleChange} dir="ltr" />
+          </div>
+        </div>
       </div>
 
       <div className="form-actions" style={{ justifyContent: 'center', marginTop: '30px' }}>

@@ -29,7 +29,7 @@ function Login() {
     users, addUser,
     coordinators, mohfezs, managers,
     platformCoordinators, platformSupervisors, platformMohfezs, platformTopManagement,
-    platformStudents
+    platformStudents, platformApplicants = []
   } = useAppData();
 
   const [showPassword, setShowPassword] = useState(false);
@@ -303,6 +303,27 @@ function Login() {
             phone: s.phone || '',
             role: 'student',
             userSession: s.session_id || s.session_no || ''
+          };
+        }
+      }
+
+      // البحث في المتقدمين الجدد للمنصة (يستخدم الرقم القومي أو جواز السفر كاسم مستخدم وكلمة مرور)
+      if (!foundUser) {
+        const app = platformApplicants.find(a =>
+          String(a.national_id || a.passport_no || '').trim() === inputUser &&
+          String(a.national_id || a.passport_no || '').trim() === inputPass
+        );
+        if (app) {
+          const nid = String(app.national_id || app.passport_no || '').trim();
+          foundUser = {
+            name: app.name,
+            email: nid,
+            username: nid,
+            national_id: nid,
+            password: nid,
+            record_number: nid,
+            phone: app.phone || '',
+            role: 'student',
           };
         }
       }

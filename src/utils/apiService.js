@@ -397,3 +397,13 @@ export const substitutionsAPI = {
   delete: (id) => apiCall(`/substitutions/${id}`, { method: 'DELETE' }),
   bulkImport: (items) => apiCall('/substitutions/bulk-import', { method: 'POST', body: { items } })
 };
+
+// Placement Groups API (مجموعات تحديد المستوى الـ 40 للمتقدمين الجدد)
+export const placementGroupsAPI = {
+  getAll: () => apiCall('/placementgroups'),
+  create: (data) => apiCall('/placementgroups', { method: 'POST', body: data }),
+  update: (id, data) => apiCall(`/placementgroups/${id}`, { method: 'PUT', body: data }),
+  delete: (id) => apiCall(`/placementgroups/${id}`, { method: 'DELETE' }),
+  deleteAll: () => apiCall('/placementgroups/all', { method: 'DELETE' }),
+  bulkImport: (items) => apiCall('/placementgroups/bulk-import', { method: 'POST', body: { items } })
+};

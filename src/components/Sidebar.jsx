@@ -251,6 +251,7 @@ function Sidebar({ isOpen, toggleSidebar }) {
         '/platform-dashboard',
         '/platform-sessions',
         '/platform-students',
+        '/platform-applicants',
         '/mohfez-hours-report',
         '/student-absence-report'
       ];

@@ -8,6 +8,7 @@ import { filterSessionsForUser } from '../utils/userScopeHelper';
 import { countriesList } from '../data/countries';
 import { getJoinState, useNow, formatReportText, toLocalDateStr } from '../utils/sessionHelpers';
 import { getSubstitutionFor } from '../utils/userScopeHelper';
+import { getApplicantExamJoinState, formatTime12Ar } from '../utils/placementHelpers';
 import SubstituteModal from '../components/SubstituteModal';
 
 function PlatformSessionsList() {
@@ -25,6 +26,9 @@ function PlatformSessionsList() {
     holidays = [],
     sessionReports = [],
     substitutions = [],
+    platformApplicants = [],
+    placementGroups = [],
+    updatePlatformApplicant,
     recordSessionJoin
   } = useAppData();
   const importRef = useRef(null);
@@ -188,7 +192,21 @@ function PlatformSessionsList() {
   };
 
   // عرض الدارس: تقرير حلقته فقط في شكل نص منسق يُفرَّغ تلقائياً من تقرير المحفظ
+  // وإذا كان من المتقدمين الجدد: تظهر له بطاقة اختبار تحديد المستوى (يظهر الرابط في يوم اختباره فقط قبل الموعد بـ 15 دقيقة وبعده بـ 30 دقيقة)
   if (isStudent && hasPermission('sessions', 'view')) {
+    const userNid = String(currentUser?.national_id || currentUser?.username || '').trim();
+    const myApplicant = platformApplicants.find(a =>
+      String(a.national_id || a.passport_no || '').trim() === userNid
+    );
+    const myPlacementGroup = myApplicant
+      ? placementGroups.find(g => Number(g.group_no) === Number(myApplicant.group_no))
+      : null;
+    const examJoin = myApplicant ? getApplicantExamJoinState(myApplicant, myPlacementGroup, now) : null;
+    const examLink = myApplicant?.teams_link || myPlacementGroup?.teams_link || '';
+    const examMohfez = myApplicant?.mohfez || myPlacementGroup?.mohfez || '-';
+    const examCoord = myApplicant?.coordinator || myPlacementGroup?.coordinator || '-';
+    const examShift = myPlacementGroup?.shift_label || (myApplicant?.exam_time ? formatTime12Ar(myApplicant.exam_time) : '-');
+
     const reportBoxStyle = {
       whiteSpace: 'pre-wrap', lineHeight: 2, background: 'var(--bg-secondary)',
       border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '14px 16px', margin: 0,
@@ -198,11 +216,62 @@ function PlatformSessionsList() {
       <div className="management-page">
         <div className="page-header">
           <div className="title-section">
-            <h2>تقرير الحلقة</h2>
-            <p>آخر تقرير سجّله المحفظ لحلقتك</p>
+            <h2>{scopedSessions.length > 0 ? 'تقرير الحلقة' : (myApplicant ? 'اختبار تحديد المستوى' : 'تقرير الحلقة')}</h2>
+            <p>{scopedSessions.length > 0 ? 'آخر تقرير سجّله المحفظ لحلقتك' : (myApplicant ? 'بيانات لجنة وموعد اختبار تحديد المستوى الخاص بك' : 'آخر تقرير سجّله المحفظ لحلقتك')}</p>
           </div>
         </div>
-        {scopedSessions.length === 0 ? (
+
+        {myApplicant && scopedSessions.length === 0 && (
+          <div className="box-card" style={{ padding: 24, marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+              <div>
+                <h3 style={{ fontSize: 18, marginBottom: 6 }}>
+                  {myApplicant.group_no ? `مجموعة اختبار (${myApplicant.group_no})` : 'طلب التحاق وتحديد مستوى'}
+                  {examMohfez && examMohfez !== '-' ? ` — الشيخ/ ${examMohfez}` : ''}
+                </h3>
+                <div style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.9 }}>
+                  <div>الدارس: <strong style={{ color: 'var(--text-primary)' }}>{myApplicant.name}</strong></div>
+                  <div>تاريخ الاختبار: <strong style={{ color: 'var(--text-primary)', direction: 'ltr', display: 'inline-block' }}>{myApplicant.exam_date || 'سيتم تحديده قريباً'}</strong> • الفترة/التوقيت: <strong style={{ color: 'var(--text-primary)' }}>{myApplicant.exam_time ? formatTime12Ar(myApplicant.exam_time) : examShift}</strong></div>
+                  <div>المحفظ الممتحن: <strong style={{ color: 'var(--text-primary)' }}>{examMohfez}</strong> • المنسق المشرف: <strong style={{ color: 'var(--text-primary)' }}>{examCoord}</strong></div>
+                  {myApplicant.rowaq && (
+                    <div>
+                      الرواق: <strong>{myApplicant.rowaq}</strong>
+                      {myApplicant.level ? ` • المستوى: ${myApplicant.level}` : ''}
+                      {myApplicant.stopped_surah ? ` • متوقف عند سورة: ${myApplicant.stopped_surah}` : ''}
+                      {myApplicant.preferred_days ? ` • الأيام المناسبة: ${myApplicant.preferred_days}` : ''}
+                      {myApplicant.preferred_time ? ` • التوقيت المناسب: ${myApplicant.preferred_time}` : ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* الرابط يختفي تماماً ماعدا دارسي اليوم الخاص بالاختبار (قبل الموعد بـ 15 دقيقة وبعده بـ 30 دقيقة) */}
+              {examJoin?.visible && examLink ? (
+                <a
+                  href={examLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => updatePlatformApplicant(myApplicant.id, { exam_attended: true, exam_joined_at: new Date().toISOString() })}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8, backgroundColor: '#10b981',
+                    color: '#fff', padding: '10px 18px', borderRadius: 6, textDecoration: 'none', fontWeight: 'bold', fontSize: 14
+                  }}
+                >
+                  <Video size={16} /> الدخول لاختبار تحديد المستوى
+                </a>
+              ) : (
+                <div style={{
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)',
+                  borderRadius: 6, padding: '8px 14px', fontSize: 13, color: 'var(--text-muted)'
+                }}>
+                  {examJoin?.reason || 'رابط الاختبار يظهر في يوم وموعد اختبارك فقط'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {scopedSessions.length === 0 && !myApplicant ? (
           <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>لا توجد حلقة مسجلة لك.</div>
         ) : scopedSessions.map(s => {
           const reports = sessionReports
