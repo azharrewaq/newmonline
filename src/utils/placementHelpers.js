@@ -71,10 +71,19 @@ export const mapApplicantRowaqToOriginal = (applicantRowaq) => {
 
 // الأيام المناسبة للدارس (كل يومين مرتبطين)
 export const PREFERRED_DAYS_OPTIONS = [
-  'سبت وثلاثاء',
-  'أحد وأربعاء',
-  'اثنين وخميس',
+  'السبت - الثلاثاء',
+  'الأحد - الأربعاء',
+  'الاثنين - الخميس',
 ];
+
+export const normalizePreferredDays = (days) => {
+  const n = normalizeArabic(days || '');
+  if (!n) return '';
+  if (n.includes('سبت') || n.includes('ثلاثاء')) return 'السبت - الثلاثاء';
+  if (n.includes('احد') || n.includes('اربعاء')) return 'الأحد - الأربعاء';
+  if (n.includes('اثنين') || n.includes('خميس')) return 'الاثنين - الخميس';
+  return days;
+};
 
 // التوقيت المناسب للدارس للحلقات الأصلية لاحقاً
 export const PREFERRED_TIME_OPTIONS = [

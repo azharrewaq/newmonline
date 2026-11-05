@@ -13,6 +13,7 @@ import {
   APPLICANT_ROWAQ_OPTIONS,
   getLevelsForApplicantRowaq,
   normalizeApplicantRowaq,
+  normalizePreferredDays,
   PREFERRED_DAYS_OPTIONS,
   PREFERRED_TIME_OPTIONS,
   PLACEMENT_GROUP_CAPACITY,
@@ -91,7 +92,7 @@ function PlatformApplicantsList() {
       if (filterShift === '6_8' && !(Number(a.group_no) >= 1 && Number(a.group_no) <= 20)) return false;
       if (filterShift === '8_10' && !(Number(a.group_no) >= 21 && Number(a.group_no) <= 40)) return false;
       if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
-      if (filterDays && (a.preferred_days || '') !== filterDays) return false;
+      if (filterDays && normalizePreferredDays(a.preferred_days || '') !== filterDays) return false;
       if (filterTime && (a.preferred_time || '') !== filterTime) return false;
 
       return true;
@@ -150,7 +151,7 @@ function PlatformApplicantsList() {
         'الرواق': normalizeApplicantRowaq(a.rowaq, a.gender) || '',
         'المستوى': a.level || '',
         'السورة المتوقف عندها': a.stopped_surah || '',
-        'الأيام المناسبة': a.preferred_days || '',
+        'الأيام المناسبة': normalizePreferredDays(a.preferred_days) || '',
         'التوقيت المناسب': a.preferred_time || '',
         'رقم المجموعة': a.group_no || '',
         'فترة المجموعة': grp?.shift_label || '',
@@ -220,7 +221,7 @@ function PlatformApplicantsList() {
         const normRowaq = normalizeApplicantRowaq(rawRowaq, rawGender);
         const level = String(row['المستوى'] || '').trim();
         const stoppedSurah = String(row['السورة المتوقف عندها'] || row['السورة'] || '').replace(/^سورة\s+/, '').trim();
-        const preferredDays = String(row['الأيام المناسبة'] || row['الايام المناسبة'] || '').trim();
+        const preferredDays = normalizePreferredDays(String(row['الأيام المناسبة'] || row['الايام المناسبة'] || '').trim());
         const preferredTime = String(row['التوقيت المناسب'] || '').trim();
 
         const groupNoRaw = row['رقم المجموعة'] || row['المجموعة'] || '';
@@ -297,14 +298,15 @@ function PlatformApplicantsList() {
     platformApplicants.forEach(a => {
       const r = normalizeApplicantRowaq(a.rowaq, a.gender);
       if (!r || !a.level) return;
-      const key = `${r} || ${a.level} || ${a.stopped_surah || 'غير محدد'} || ${a.preferred_days || 'غير محدد'} || ${a.preferred_time || 'غير محدد'}`;
+      const normDays = normalizePreferredDays(a.preferred_days);
+      const key = `${r} || ${a.level} || ${a.stopped_surah || 'غير محدد'} || ${normDays || 'غير محدد'} || ${a.preferred_time || 'غير محدد'}`;
       if (!map[key]) {
         map[key] = {
           key,
           rowaq: r,
           level: a.level,
           stopped_surah: a.stopped_surah || '-',
-          preferred_days: a.preferred_days || '-',
+          preferred_days: normDays || '-',
           preferred_time: a.preferred_time || '-',
           members: [],
         };
@@ -595,7 +597,7 @@ function PlatformApplicantsList() {
                           <select
                             className="form-select"
                             style={{ padding: '4px 8px', fontSize: 13 }}
-                            value={a.preferred_days || ''}
+                            value={normalizePreferredDays(a.preferred_days) || ''}
                             onChange={e => handleInlineUpdate(a, 'preferred_days', e.target.value)}
                           >
                             <option value="">-- اليومان --</option>

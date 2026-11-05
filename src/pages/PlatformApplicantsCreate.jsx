@@ -7,6 +7,7 @@ import {
   APPLICANT_ROWAQ_OPTIONS,
   getLevelsForApplicantRowaq,
   normalizeApplicantRowaq,
+  normalizePreferredDays,
   PREFERRED_DAYS_OPTIONS,
   PREFERRED_TIME_OPTIONS,
 } from '../utils/placementHelpers';
@@ -78,7 +79,7 @@ function PlatformApplicantsCreate() {
           rowaq: normalizeApplicantRowaq(a.rowaq, a.gender) || '',
           level: a.level || '',
           stopped_surah: a.stopped_surah || '',
-          preferred_days: a.preferred_days || '',
+          preferred_days: normalizePreferredDays(a.preferred_days) || '',
           preferred_time: a.preferred_time || '',
           group_no: a.group_no || '',
           mohfez: a.mohfez || '',
