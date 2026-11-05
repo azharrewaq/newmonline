@@ -302,6 +302,7 @@ export const printPlacementExamSheets = (sheets = []) => {
       const a = sheet.rows?.[i] || {};
       const rowaq = normalizeApplicantRowaq(a.rowaq, a.gender) || '';
       const level = a.level || '';
+      const stoppedSurah = a.stopped_surah || '';
       const prefDays = normalizePreferredDays(a.preferred_days) || '';
       const prefTime = a.preferred_time || '';
       trs += `
@@ -316,6 +317,7 @@ export const printPlacementExamSheets = (sheets = []) => {
           <td class="col-q">${escapeHtml(a.q5 ?? '')}</td>
           <td class="col-rowaq">${escapeHtml(rowaq)}</td>
           <td class="col-level">${escapeHtml(level)}</td>
+          <td class="col-surah">${escapeHtml(stoppedSurah)}</td>
           <td class="col-days">${escapeHtml(prefDays)}</td>
           <td class="col-time">${escapeHtml(prefTime)}</td>
         </tr>
@@ -351,18 +353,19 @@ export const printPlacementExamSheets = (sheets = []) => {
         <table class="exam-table">
           <thead>
             <tr>
-              <th style="width: 32px;">م</th>
-              <th style="width: 17%;">الاسم</th>
-              <th style="width: 12%;">الرقم القومى</th>
-              <th style="width: 6%;">درجة السؤال الأول</th>
-              <th style="width: 6%;">درجة السؤال الثانى</th>
-              <th style="width: 6%;">درجة السؤال الثالث</th>
-              <th style="width: 6%;">درجة السؤال الرابع</th>
-              <th style="width: 6%;">درجة السؤال الخامس</th>
-              <th style="width: 12%;">الرواق</th>
-              <th style="width: 11%;">المستوى</th>
-              <th style="width: 8%;">الأيام المناسبة</th>
-              <th style="width: 8%;">الساعة المناسبة</th>
+              <th style="width: 30px;">م</th>
+              <th style="width: 15%;">الاسم</th>
+              <th style="width: 11%;">الرقم القومى</th>
+              <th style="width: 5.5%;">درجة السؤال الأول</th>
+              <th style="width: 5.5%;">درجة السؤال الثانى</th>
+              <th style="width: 5.5%;">درجة السؤال الثالث</th>
+              <th style="width: 5.5%;">درجة السؤال الرابع</th>
+              <th style="width: 5.5%;">درجة السؤال الخامس</th>
+              <th style="width: 11%;">الرواق</th>
+              <th style="width: 10%;">المستوى</th>
+              <th style="width: 8%;">السورة المتوقف عندها</th>
+              <th style="width: 7.5%;">الأيام المناسبة</th>
+              <th style="width: 7.5%;">الساعة المناسبة</th>
             </tr>
           </thead>
           <tbody>
