@@ -110,7 +110,7 @@ function PlatformApplicantsCreate() {
       return;
     }
 
-    const gender = form.rowaq === 'كبار نساء' ? 'أنثى' : (form.rowaq === 'كبار رجال' ? 'ذكر' : 'أطفال');
+    const gender = form.rowaq.includes('سيدات') || form.rowaq.includes('نساء') ? 'أنثى' : (form.rowaq.includes('رجال') ? 'ذكر' : 'أطفال');
     const finalForm = {
       ...form,
       name: form.name.trim(),

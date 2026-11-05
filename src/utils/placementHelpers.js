@@ -12,9 +12,9 @@ export const PLACEMENT_TOTAL_GROUPS = 40;
 
 // خيارات الرواق للمتقدمين الجدد (بدون تجويد أو قراءات)
 export const APPLICANT_ROWAQ_OPTIONS = [
-  'أطفال',
-  'كبار رجال',
-  'كبار نساء',
+  'رواق القرآن الكريم ( أطفال )',
+  'رواق القرآن الكريم كبار ( رجال )',
+  'رواق القرآن الكريم كبار ( سيدات )',
 ];
 
 // المستويات المرتبطة بنوع الرواق وفق المعمول به في الحلقات الأصلية
@@ -47,12 +47,12 @@ export const normalizeApplicantRowaq = (rowaq, gender = '') => {
   const r = normalizeArabic(rowaq || '');
   const g = normalizeArabic(gender || '');
   if (!r) return '';
-  if (r.includes('اطفال') || r.includes('طفل')) return 'أطفال';
-  if (r.includes('نساء') || r.includes('اناث') || r.includes('انثي') || g.includes('انثي') || g.includes('نساء')) {
-    return 'كبار نساء';
+  if (r.includes('اطفال') || r.includes('طفل')) return 'رواق القرآن الكريم ( أطفال )';
+  if (r.includes('سيدات') || r.includes('نساء') || r.includes('اناث') || r.includes('انثي') || g.includes('انثي') || g.includes('نساء') || g.includes('سيدات')) {
+    return 'رواق القرآن الكريم كبار ( سيدات )';
   }
   if (r.includes('رجال') || r.includes('ذكور') || r.includes('ذكر') || r.includes('كبار')) {
-    return 'كبار رجال';
+    return 'رواق القرآن الكريم كبار ( رجال )';
   }
   return rowaq;
 };
@@ -60,10 +60,10 @@ export const normalizeApplicantRowaq = (rowaq, gender = '') => {
 // تحويل اختيار الرواق في المتقدمين إلى (rowaq + student_type) المعتمد في الحلقات الأصلية
 export const mapApplicantRowaqToOriginal = (applicantRowaq) => {
   const norm = normalizeApplicantRowaq(applicantRowaq);
-  if (norm === 'أطفال') {
+  if (norm === 'رواق القرآن الكريم ( أطفال )') {
     return { rowaq: 'رواق القرآن الكريم ( أطفال )', student_type: 'أطفال', gender: 'أطفال' };
   }
-  if (norm === 'كبار نساء') {
+  if (norm === 'رواق القرآن الكريم كبار ( سيدات )') {
     return { rowaq: 'رواق القرآن الكريم ( كبار )', student_type: 'نساء', gender: 'أنثى' };
   }
   return { rowaq: 'رواق القرآن الكريم ( كبار )', student_type: 'رجال', gender: 'ذكر' };
@@ -188,3 +188,4 @@ export const formatTime12Ar = (timeStr) => {
   h = h % 12 || 12;
   return `${String(h).padStart(2, '0')}:${m} ${period}`;
 };
+

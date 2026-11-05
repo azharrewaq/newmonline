@@ -113,7 +113,7 @@ function PlatformApplicantsList() {
     const patch = { [field]: value };
     if (field === 'rowaq') {
       patch.level = '';
-      patch.gender = value === 'كبار نساء' ? 'أنثى' : (value === 'كبار رجال' ? 'ذكر' : 'أطفال');
+      patch.gender = value.includes('سيدات') || value.includes('نساء') ? 'أنثى' : (value.includes('رجال') ? 'ذكر' : 'أطفال');
     }
     if (field === 'group_no') {
       const grp = placementGroups.find(g => String(g.group_no) === String(value));
@@ -235,7 +235,7 @@ function PlatformApplicantsList() {
         const phone = String(row['الهاتف'] || row['رقم الهاتف'] || '').trim();
 
         const id = String(Date.now() + idx + Math.random());
-        const gender = normRowaq === 'كبار نساء' ? 'أنثى' : (normRowaq === 'كبار رجال' ? 'ذكر' : 'أطفال');
+        const gender = normRowaq.includes('سيدات') || normRowaq.includes('نساء') ? 'أنثى' : (normRowaq.includes('رجال') ? 'ذكر' : 'أطفال');
 
         newApplicants.push({
           id,
