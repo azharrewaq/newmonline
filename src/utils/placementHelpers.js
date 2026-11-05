@@ -431,12 +431,10 @@ export const printPlacementExamSheets = (sheets = []) => {
     }
     .print-sheet {
       padding: 6px 10px;
-      page-break-after: always;
-      break-after: page;
     }
-    .print-sheet:last-child {
-      page-break-after: auto;
-      break-after: auto;
+    .print-sheet + .print-sheet {
+      page-break-before: always;
+      break-before: page;
     }
     .sheet-header {
       display: flex;
@@ -534,6 +532,11 @@ export const printPlacementExamSheets = (sheets = []) => {
       }
     }
   </style>
+  <script>
+    window.onload = function() {
+      setTimeout(function() { window.print(); }, 250);
+    };
+  </script>
 </head>
 <body>
   <div class="no-print-bar">
@@ -541,11 +544,6 @@ export const printPlacementExamSheets = (sheets = []) => {
     <button onclick="window.print()">طباعة الكشوف الآن (Print)</button>
   </div>
   ${pagesHtml}
-  <script>
-    window.onload = function() {
-      setTimeout(function() { window.print(); }, 250);
-    };
-  </script>
 </body>
 </html>`;
 
