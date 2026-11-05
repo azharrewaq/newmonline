@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search, Plus, Download, Upload, Trash2, Edit, Video,
-  Users, Layers, GitMerge, Clock, Calendar
+  Users, Layers, GitMerge, Clock, Calendar, Printer
 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
@@ -18,6 +18,8 @@ import {
   PREFERRED_TIME_OPTIONS,
   PLACEMENT_GROUP_CAPACITY,
   formatTime12Ar,
+  buildExamSheetsByGroupAndCoordinator,
+  printPlacementExamSheets,
 } from '../utils/placementHelpers';
 
 function PlatformApplicantsList() {
@@ -47,6 +49,7 @@ function PlatformApplicantsList() {
   const [filterRowaq, setFilterRowaq] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
   const [filterGroupNo, setFilterGroupNo] = useState('');
+  const [filterCoordinator, setFilterCoordinator] = useState('');
   const [filterShift, setFilterShift] = useState(''); // '' | '6_8' | '8_10'
   const [filterExamDate, setFilterExamDate] = useState('');
   const [filterDays, setFilterDays] = useState('');
@@ -89,6 +92,11 @@ function PlatformApplicantsList() {
       if (filterRowaq && normRowaq !== filterRowaq) return false;
       if (filterLevel && (a.level || '') !== filterLevel) return false;
       if (filterGroupNo && String(a.group_no || '') !== String(filterGroupNo)) return false;
+      if (filterCoordinator) {
+        const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
+        const aCoord = a.coordinator || grp?.coordinator || '';
+        if (normalizeArabic(aCoord) !== normalizeArabic(filterCoordinator)) return false;
+      }
       if (filterShift === '6_8' && !(Number(a.group_no) >= 1 && Number(a.group_no) <= 20)) return false;
       if (filterShift === '8_10' && !(Number(a.group_no) >= 21 && Number(a.group_no) <= 40)) return false;
       if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
@@ -100,7 +108,7 @@ function PlatformApplicantsList() {
   }, [
     platformApplicants, isAdminOrSupervisor, isMohfez, isCoordinator,
     currentUser, myGroupNumbers, filterName, filterRowaq, filterLevel,
-    filterGroupNo, filterShift, filterExamDate, filterDays, filterTime
+    filterGroupNo, filterCoordinator, placementGroups, filterShift, filterExamDate, filterDays, filterTime
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -138,6 +146,53 @@ function PlatformApplicantsList() {
   // تحديث بيانات إحدى المجموعات الـ 40 + عكسها على المتقدمين المسكنين فيها
   const handleGroupUpdate = (group, field, value) => {
     updatePlacementGroup(group.id, { [field]: value });
+  };
+
+  // طباعة كشوف الاختبار (كشف لكل مجموعة ومنسق بالديباجة الرسمية للجامع الأزهر)
+  const handlePrintExamSheets = () => {
+    const sheets = buildExamSheetsByGroupAndCoordinator(filtered, placementGroups, {
+      targetGroupNo: filterGroupNo,
+      targetCoordinator: filterCoordinator,
+      targetDate: filterExamDate,
+    });
+    printPlacementExamSheets(sheets);
+  };
+
+  // طباعة كشف مجموعة واحدة محددة (من تبويب المجموعات الـ 40)
+  const handlePrintGroupSheet = (group) => {
+    const groupApplicants = platformApplicants.filter(a => {
+      if (Number(a.group_no) !== Number(group.group_no)) return false;
+      if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+      return true;
+    });
+    const sheets = buildExamSheetsByGroupAndCoordinator(groupApplicants, placementGroups, {
+      targetGroupNo: group.group_no,
+      targetCoordinator: group.coordinator || '',
+      targetDate: filterExamDate,
+      padToCapacity: true,
+    });
+    printPlacementExamSheets(sheets);
+  };
+
+  // طباعة كشوف جميع الـ 40 مجموعة دفعة واحدة
+  const handlePrintAllFortyGroups = () => {
+    const allSheets = placementGroups.map(group => {
+      const groupApplicants = platformApplicants.filter(a => {
+        if (Number(a.group_no) !== Number(group.group_no)) return false;
+        if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+        return true;
+      });
+      return {
+        groupNo: group.group_no,
+        shiftLabel: group.shift_label,
+        coordinator: group.coordinator || groupApplicants[0]?.coordinator || '',
+        mohfez: group.mohfez || groupApplicants[0]?.mohfez || '',
+        examDate: filterExamDate || groupApplicants[0]?.exam_date || '',
+        rows: groupApplicants,
+        padCount: PLACEMENT_GROUP_CAPACITY,
+      };
+    });
+    printPlacementExamSheets(allSheets);
   };
 
   // تصدير جدول المتقدمين الحالي إلى Excel
@@ -418,6 +473,18 @@ function PlatformApplicantsList() {
               </div>
 
               <div className="form-group">
+                <label>المنسق المشرف</label>
+                <select
+                  className="form-select"
+                  value={filterCoordinator}
+                  onChange={e => { setFilterCoordinator(e.target.value); setCurrentPage(1); }}
+                >
+                  <option value="">--- كل المنسقين ---</option>
+                  {platformCoordinators.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label>فترة الاختبار</label>
                 <select
                   className="form-select"
@@ -470,7 +537,7 @@ function PlatformApplicantsList() {
                 className="btn btn-outline"
                 onClick={() => {
                   setFilterName(''); setFilterRowaq(''); setFilterLevel('');
-                  setFilterGroupNo(''); setFilterShift(''); setFilterExamDate('');
+                  setFilterGroupNo(''); setFilterCoordinator(''); setFilterShift(''); setFilterExamDate('');
                   setFilterDays(''); setFilterTime(''); setCurrentPage(1);
                 }}
               >
@@ -503,6 +570,9 @@ function PlatformApplicantsList() {
                   )}
                 </>
               )}
+              <button className="btn btn-gold-outline" onClick={handlePrintExamSheets}>
+                <Printer size={16} /> طباعة كشف الاختبار (لكل مجموعة ومنسق)
+              </button>
               {!isMohfez && (
                 <button className="btn btn-outline" onClick={handleExport}>
                   <Download size={16} /> تصدير
@@ -703,6 +773,14 @@ function PlatformApplicantsList() {
       {/* ───────── التبويب الثاني: المجموعات الـ 40 (20 من 6-8 م | 20 من 8-10 م) ───────── */}
       {activeTab === 'groups' && (
         <div>
+          <div className="box-card" style={{ padding: '12px 20px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+              طباعة كشف اختبار تحديد المستوى الرسمي (الجامع الأزهر - إدارة شئون الأروقة - نوفمبر 2026) لكل مجموعة ومنسق:
+            </div>
+            <button className="btn btn-primary" onClick={handlePrintAllFortyGroups}>
+              <Printer size={16} /> طباعة كشوف جميع المجموعات (40 مجموعة)
+            </button>
+          </div>
           {[
             { title: 'الفترة الأولى: 20 مجموعة (من 6 إلى 8 مساءً)', min: 1, max: 20, badgeColor: '#3b82f6' },
             { title: 'الفترة الثانية: 20 مجموعة (من 8 إلى 10 مساءً)', min: 21, max: 40, badgeColor: '#10b981' },
@@ -729,7 +807,7 @@ function PlatformApplicantsList() {
                         <th style={{ textAlign: 'center' }}>المنسق المشرف</th>
                         <th style={{ textAlign: 'center' }}>رابط تيمز (Teams)</th>
                         <th style={{ textAlign: 'center' }}>المسكنون حالياً</th>
-                        <th style={{ textAlign: 'center' }}>عرض</th>
+                        <th style={{ textAlign: 'center' }}>عرض / طباعة الكشف</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -802,16 +880,26 @@ function PlatformApplicantsList() {
                               {count} / {PLACEMENT_GROUP_CAPACITY}
                             </td>
                             <td style={{ textAlign: 'center' }}>
-                              <button
-                                className="btn btn-outline"
-                                style={{ padding: '4px 10px', fontSize: 12 }}
-                                onClick={() => {
-                                  setFilterGroupNo(String(g.group_no));
-                                  setActiveTab('applicants');
-                                }}
-                              >
-                                دارسو المجموعة
-                              </button>
+                              <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                                <button
+                                  className="btn btn-outline"
+                                  style={{ padding: '4px 10px', fontSize: 12 }}
+                                  onClick={() => {
+                                    setFilterGroupNo(String(g.group_no));
+                                    setActiveTab('applicants');
+                                  }}
+                                >
+                                  دارسو المجموعة
+                                </button>
+                                <button
+                                  className="btn btn-gold-outline"
+                                  style={{ padding: '4px 10px', fontSize: 12 }}
+                                  onClick={() => handlePrintGroupSheet(g)}
+                                  title="طباعة كشف اختبار المجموعة"
+                                >
+                                  <Printer size={14} /> طباعة الكشف
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

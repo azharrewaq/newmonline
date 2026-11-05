@@ -198,3 +198,358 @@ export const formatTime12Ar = (timeStr) => {
   return `${String(h).padStart(2, '0')}:${m} ${period}`;
 };
 
+const escapeHtml = (val) =>
+  String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+/**
+ * تجهيز كشوف الطباعة مقسمة لكل مجموعة ومنسق
+ * @param {Array} applicants قائمة المتقدمين المفلترة
+ * @param {Array} placementGroups قائمة الـ 40 مجموعة
+ * @param {Object} options { targetGroupNo, targetCoordinator, targetDate, padToCapacity }
+ */
+export const buildExamSheetsByGroupAndCoordinator = (
+  applicants = [],
+  placementGroups = [],
+  options = {}
+) => {
+  const { targetGroupNo = '', targetCoordinator = '', targetDate = '', padToCapacity = false } = options;
+
+  // إذا طُلب طباعة مجموعة محددة حتى لو كانت فارغة من الدارسين حالياً
+  if (targetGroupNo) {
+    const grp = placementGroups.find(g => String(g.group_no) === String(targetGroupNo));
+    const groupApplicants = applicants.filter(a => String(a.group_no || '') === String(targetGroupNo));
+    return [{
+      groupNo: grp?.group_no || targetGroupNo,
+      shiftLabel: grp?.shift_label || (Number(targetGroupNo) <= 20 ? 'من 6 إلى 8 مساءً' : 'من 8 إلى 10 مساءً'),
+      coordinator: targetCoordinator || grp?.coordinator || groupApplicants[0]?.coordinator || '',
+      mohfez: grp?.mohfez || groupApplicants[0]?.mohfez || '',
+      examDate: targetDate || groupApplicants[0]?.exam_date || '',
+      rows: groupApplicants,
+      padCount: groupApplicants.length === 0 || padToCapacity ? PLACEMENT_GROUP_CAPACITY : groupApplicants.length,
+    }];
+  }
+
+  // إذا كان هناك دارسون، نقسمهم إلى كشف مستقل لكل (مجموعة + منسق)
+  if (applicants.length > 0) {
+    const map = new Map();
+    applicants.forEach(a => {
+      const gNo = a.group_no ? String(a.group_no) : 'غير مسكن';
+      const grp = placementGroups.find(g => String(g.group_no) === gNo);
+      const coord = (a.coordinator || grp?.coordinator || targetCoordinator || '').trim();
+      const mohfez = (a.mohfez || grp?.mohfez || '').trim();
+      const examDate = (a.exam_date || targetDate || '').trim();
+      const key = `${gNo}||${coord}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          groupNo: gNo,
+          shiftLabel: grp?.shift_label || (Number(gNo) <= 20 ? 'من 6 إلى 8 مساءً' : (Number(gNo) <= 40 ? 'من 8 إلى 10 مساءً' : '')),
+          coordinator: coord,
+          mohfez,
+          examDate,
+          rows: [],
+        });
+      }
+      const bucket = map.get(key);
+      if (!bucket.mohfez && mohfez) bucket.mohfez = mohfez;
+      if (!bucket.examDate && examDate) bucket.examDate = examDate;
+      bucket.rows.push(a);
+    });
+
+    const sheets = Array.from(map.values()).sort((a, b) => {
+      const na = parseInt(a.groupNo, 10) || 999;
+      const nb = parseInt(b.groupNo, 10) || 999;
+      return na - nb;
+    });
+    return sheets.map(s => ({
+      ...s,
+      padCount: padToCapacity ? Math.max(s.rows.length, PLACEMENT_GROUP_CAPACITY) : Math.max(s.rows.length, 1),
+    }));
+  }
+
+  // إذا لم يكن هناك دارسون بعد، نطبع نموذجاً فارغاً (25 صفاً) للمجموعات المطابقة
+  const groupsToPrint = targetCoordinator
+    ? placementGroups.filter(g => normalizeArabic(g.coordinator || '') === normalizeArabic(targetCoordinator))
+    : [placementGroups[0] || { group_no: 1, shift_label: 'من 6 إلى 8 مساءً', coordinator: '', mohfez: '' }];
+
+  return (groupsToPrint.length > 0 ? groupsToPrint : [placementGroups[0]]).map(grp => ({
+    groupNo: grp?.group_no || 1,
+    shiftLabel: grp?.shift_label || 'من 6 إلى 8 مساءً',
+    coordinator: grp?.coordinator || targetCoordinator || '',
+    mohfez: grp?.mohfez || '',
+    examDate: targetDate || '',
+    rows: [],
+    padCount: PLACEMENT_GROUP_CAPACITY,
+  }));
+};
+
+/**
+ * فتح نافذة طباعة كشوف اختبار تحديد المستوى بالديباجة الرسمية للجامع الأزهر
+ */
+export const printPlacementExamSheets = (sheets = []) => {
+  if (!sheets || sheets.length === 0) {
+    alert('لا توجد كشوف للطباعة');
+    return;
+  }
+
+  const pagesHtml = sheets.map((sheet) => {
+    const totalRows = Math.max(sheet.rows?.length || 0, sheet.padCount || PLACEMENT_GROUP_CAPACITY);
+    let trs = '';
+    for (let i = 0; i < totalRows; i++) {
+      const a = sheet.rows?.[i] || {};
+      const rowaq = normalizeApplicantRowaq(a.rowaq, a.gender) || '';
+      const level = a.level || '';
+      const prefDays = normalizePreferredDays(a.preferred_days) || '';
+      const prefTime = a.preferred_time || '';
+      trs += `
+        <tr>
+          <td class="col-idx">${i + 1}</td>
+          <td class="col-name">${escapeHtml(a.name || '')}</td>
+          <td class="col-nid" dir="ltr">${escapeHtml(a.national_id || a.passport_no || '')}</td>
+          <td class="col-q">${escapeHtml(a.q1 ?? '')}</td>
+          <td class="col-q">${escapeHtml(a.q2 ?? '')}</td>
+          <td class="col-q">${escapeHtml(a.q3 ?? '')}</td>
+          <td class="col-q">${escapeHtml(a.q4 ?? '')}</td>
+          <td class="col-q">${escapeHtml(a.q5 ?? '')}</td>
+          <td class="col-rowaq">${escapeHtml(rowaq)}</td>
+          <td class="col-level">${escapeHtml(level)}</td>
+          <td class="col-days">${escapeHtml(prefDays)}</td>
+          <td class="col-time">${escapeHtml(prefTime)}</td>
+        </tr>
+      `;
+    }
+
+    const groupDisplay = sheet.groupNo && sheet.groupNo !== 'غير مسكن'
+      ? `مجموعة (${escapeHtml(sheet.groupNo)})${sheet.shiftLabel ? ` — ${escapeHtml(sheet.shiftLabel)}` : ''}`
+      : '................................';
+
+    return `
+      <section class="print-sheet">
+        <header class="sheet-header">
+          <div class="header-right">
+            <div class="org-main">الجامع الأزهر</div>
+            <div class="org-sub">إدارة شئون الأروقة</div>
+          </div>
+          <div class="header-center">
+            <h1>كشف تحديد مستوى المنصة المحلية بالجامع الأزهر نوفمبر 2026</h1>
+          </div>
+          <div class="header-left">
+            <div>التاريخ: ${escapeHtml(sheet.examDate || '    / 11 / 2026')}</div>
+          </div>
+        </header>
+
+        <div class="meta-bar">
+          <div class="meta-item"><strong>المجموعة:</strong> <span>${groupDisplay}</span></div>
+          <div class="meta-item"><strong>المنسق:</strong> <span>${escapeHtml(sheet.coordinator || '........................................')}</span></div>
+          <div class="meta-item"><strong>المحفظ الممتحن:</strong> <span>${escapeHtml(sheet.mohfez || '........................................')}</span></div>
+          <div class="meta-item"><strong>عدد الدارسين:</strong> <span>${sheet.rows?.length || PLACEMENT_GROUP_CAPACITY}</span></div>
+        </div>
+
+        <table class="exam-table">
+          <thead>
+            <tr>
+              <th style="width: 32px;">م</th>
+              <th style="width: 17%;">الاسم</th>
+              <th style="width: 12%;">الرقم القومى</th>
+              <th style="width: 6%;">درجة السؤال الأول</th>
+              <th style="width: 6%;">درجة السؤال الثانى</th>
+              <th style="width: 6%;">درجة السؤال الثالث</th>
+              <th style="width: 6%;">درجة السؤال الرابع</th>
+              <th style="width: 6%;">درجة السؤال الخامس</th>
+              <th style="width: 12%;">الرواق</th>
+              <th style="width: 11%;">المستوى</th>
+              <th style="width: 8%;">الأيام المناسبة</th>
+              <th style="width: 8%;">الساعة المناسبة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${trs}
+          </tbody>
+        </table>
+
+        <footer class="sheet-footer">
+          <div>توقيع المحفظ الممتحن: ........................................</div>
+          <div>توقيع المنسق: ........................................</div>
+          <div>يعتمد، إدارة شئون الأروقة: ........................................</div>
+        </footer>
+      </section>
+    `;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>كشف تحديد مستوى المنصة المحلية بالجامع الأزهر نوفمبر 2026</title>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 8mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', 'Tajawal', 'Traditional Arabic', 'Arial', sans-serif;
+      color: #000;
+      background: #fff;
+      direction: rtl;
+    }
+    .no-print-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1e293b;
+      color: #fff;
+      padding: 10px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .no-print-bar button {
+      background: #d4af37;
+      color: #000;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .print-sheet {
+      padding: 6px 10px;
+      page-break-after: always;
+      break-after: page;
+    }
+    .print-sheet:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .sheet-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+    .header-right .org-main {
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .header-right .org-sub {
+      font-size: 15px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+    .header-center {
+      text-align: center;
+      flex: 1;
+      padding: 0 12px;
+    }
+    .header-center h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 800;
+      border: 1.5px solid #000;
+      display: inline-block;
+      padding: 5px 18px;
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+    .header-left {
+      font-size: 13px;
+      font-weight: 700;
+      min-width: 150px;
+      text-align: left;
+    }
+    .meta-bar {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      border: 1px solid #000;
+      background: #f1f5f9;
+      padding: 6px 12px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .exam-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .exam-table th,
+    .exam-table td {
+      border: 1px solid #000;
+      padding: 4px 5px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .exam-table th {
+      background: #e2e8f0;
+      font-weight: 800;
+      font-size: 11.5px;
+      line-height: 1.3;
+    }
+    .exam-table td {
+      height: 23px;
+    }
+    .exam-table td.col-name {
+      text-align: right;
+      padding-right: 8px;
+      font-weight: 600;
+    }
+    .exam-table td.col-nid {
+      font-family: monospace, sans-serif;
+      font-size: 12px;
+    }
+    .sheet-footer {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    @media print {
+      .no-print-bar {
+        display: none !important;
+      }
+      .print-sheet {
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-bar">
+    <div>معاينة الطباعة — عدد الكشوف: (${sheets.length}) كشف | الجامع الأزهر - إدارة شئون الأروقة</div>
+    <button onclick="window.print()">طباعة الكشوف الآن (Print)</button>
+  </div>
+  ${pagesHtml}
+  <script>
+    window.onload = function() {
+      setTimeout(function() { window.print(); }, 250);
+    };
+  </script>
+</body>
+</html>`;
+
+  const printWin = window.open('', '_blank');
+  if (!printWin) {
+    alert('يرجى السماح بالنوافذ المنبثقة (Pop-ups) لطباعة الكشف.');
+    return;
+  }
+  printWin.document.open();
+  printWin.document.write(html);
+  printWin.document.close();
+};
+
