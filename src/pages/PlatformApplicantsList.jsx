@@ -365,7 +365,7 @@ function PlatformApplicantsList() {
         const mohfez = String(row['المحفظ'] || matchedGroup?.mohfez || '').trim();
         const coordinator = String(row['المنسق'] || matchedGroup?.coordinator || '').trim();
         const examDate = String(row['تاريخ الاختبار'] || '').trim();
-        const examTime = String(row['توقيت الاختبار'] || matchedGroup?.time_start || (groupNo > 20 ? '20:00' : (groupNo >= 1 ? '18:00' : ''))).trim();
+        const examTime = String(row['توقيت الاختبار'] || matchedGroup?.time_start || (groupNo > 20 ? '20:00' : (groupNo >= 1 ? '18:00' : ''))).trim().replace('.', ':');
         const teamsLink = String(row['رابط تيمز'] || row['رابط الحلقة'] || matchedGroup?.teams_link || '').trim();
         const phone = String(row['رقم التليفون'] || row['رقم الهاتف'] || row['الهاتف'] || row['التليفون'] || '').trim();
 

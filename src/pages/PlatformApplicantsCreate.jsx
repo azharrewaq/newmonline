@@ -13,6 +13,7 @@ import {
   normalizePreferredDays,
   PREFERRED_DAYS_OPTIONS,
   PREFERRED_TIME_OPTIONS,
+  EXAM_TIME_OPTIONS,
 } from '../utils/placementHelpers';
 
 function PlatformApplicantsCreate() {
@@ -328,7 +329,10 @@ function PlatformApplicantsCreate() {
 
           <div className="form-group">
             <label>توقيت الاختبار (يظهر الرابط قبله بـ 15 د وبعده بـ 30 د)</label>
-            <input name="exam_time" type="time" className="form-input" value={form.exam_time} onChange={handleChange} />
+            <select name="exam_time" className="form-select" value={String(form.exam_time || '').replace('.', ':')} onChange={handleChange} dir="ltr">
+              <option value="">--- اختر توقيت الاختبار ---</option>
+              {EXAM_TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
 
           <div className="form-group">

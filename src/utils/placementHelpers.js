@@ -107,6 +107,14 @@ export const PREFERRED_TIME_OPTIONS = [
   'من 9 إلى 10 مساء',
 ];
 
+// مواعيد اختبار تحديد المستوى المتاحة
+export const EXAM_TIME_OPTIONS = [
+  '18:00',
+  '19:00',
+  '20:00',
+  '21:00',
+];
+
 // الفترتان اليوميتان للـ 40 مجموعة اختبار
 export const PLACEMENT_SLOTS = [
   { id: 'slot_6_8', label: 'من 6 إلى 8 مساءً', time_start: '18:00', time_end: '20:00', defaultExamTime: '18:00', range: [1, 20] },
@@ -141,7 +149,7 @@ export const createDefaultPlacementGroups = () => {
 const parseMinutes = (timeStr) => {
   if (!timeStr) return null;
   const clean = String(timeStr).trim();
-  const m = clean.match(/^(\d{1,2}):(\d{2})/);
+  const m = clean.match(/^(\d{1,2})[:.](\d{2})/);
   if (!m) return null;
   let h = parseInt(m[1], 10);
   const min = parseInt(m[2], 10);
