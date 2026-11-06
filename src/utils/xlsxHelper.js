@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { quranSurahs } from '../data/quranSurahs';
 import { countriesList } from '../data/countries';
+import egyptCenters from '../data/egyptCenters';
 
 // Avoid Vite/ESM bundling issues where XLSX properties might be nested under default
 const xlsxLib = XLSX && XLSX.utils ? XLSX : (XLSX[String('default')] || XLSX);
@@ -40,6 +41,16 @@ const buildLookupCatalog = () => {
   ];
 
   return [
+    {
+      title: 'النوع',
+      matchHeaders: ['النوع', 'الجنس'],
+      values: ['ذكر', 'أنثى'],
+    },
+    {
+      title: 'المحافظات',
+      matchHeaders: ['المحافظة'],
+      values: Object.keys(egyptCenters),
+    },
     {
       title: 'الرواق',
       matchHeaders: ['الرواق'],

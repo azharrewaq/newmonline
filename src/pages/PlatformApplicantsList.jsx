@@ -11,6 +11,9 @@ import { quranSurahs } from '../data/quranSurahs';
 import { normalizeArabic } from '../utils/userScopeHelper';
 import {
   APPLICANT_ROWAQ_OPTIONS,
+  APPLICANT_GENDER_OPTIONS,
+  GOVERNORATES_LIST,
+  normalizeApplicantGender,
   getLevelsForApplicantRowaq,
   normalizeApplicantRowaq,
   normalizePreferredDays,
@@ -126,7 +129,8 @@ function PlatformApplicantsList() {
       patch.level = '';
       patch.applied_level = '';
       patch.tested_level = '';
-      patch.gender = value.includes('سيدات') || value.includes('نساء') ? 'أنثى' : (value.includes('رجال') ? 'ذكر' : 'أطفال');
+      if (value.includes('سيدات') || value.includes('نساء')) patch.gender = 'أنثى';
+      else if (value.includes('رجال')) patch.gender = 'ذكر';
     }
     if (field === 'applied_level') {
       patch.level = value;
@@ -258,6 +262,9 @@ function PlatformApplicantsList() {
       return {
         'الاسم': a.name || '',
         'الرقم القومي أو جواز السفر': a.national_id || a.passport_no || '',
+        'النوع': normalizeApplicantGender(a.gender, a.rowaq) || '',
+        'المحافظة': a.governorate || '',
+        'رقم التليفون': a.phone || '',
         'الرواق': normalizeApplicantRowaq(a.rowaq, a.gender) || '',
         'المستوى المتقدم عليه': a.applied_level || a.level || '',
         'المستوى وفق الاختبار': a.tested_level || '',
@@ -281,6 +288,9 @@ function PlatformApplicantsList() {
     exportToXLSX([{
       'الاسم': '',
       'الرقم القومي أو جواز السفر': '',
+      'النوع': '',
+      'المحافظة': '',
+      'رقم التليفون': '',
       'الرواق': '',
       'المستوى المتقدم عليه': '',
       'المستوى وفق الاختبار': '',
@@ -332,8 +342,10 @@ function PlatformApplicantsList() {
         if (name.startsWith('توقيع المحفظ') || name.startsWith('الجامع الأزهر') || name.startsWith('المجموعة:')) return;
 
         const rawRowaq = row['الرواق'] || '';
-        const rawGender = row['الجنس'] || '';
+        const rawGender = row['النوع'] || row['الجنس'] || '';
         const normRowaq = normalizeApplicantRowaq(rawRowaq, rawGender);
+        const gender = normalizeApplicantGender(rawGender, normRowaq);
+        const governorate = String(row['المحافظة'] || '').trim();
         const appliedLevel = String(row['المستوى المتقدم عليه'] || row['المستوى'] || '').trim();
         const testedLevel = String(row['المستوى وفق الاختبار'] || '').trim();
         const level = testedLevel || appliedLevel;
@@ -355,16 +367,19 @@ function PlatformApplicantsList() {
         const examDate = String(row['تاريخ الاختبار'] || '').trim();
         const examTime = String(row['توقيت الاختبار'] || matchedGroup?.time_start || (groupNo > 20 ? '20:00' : (groupNo >= 1 ? '18:00' : ''))).trim();
         const teamsLink = String(row['رابط تيمز'] || row['رابط الحلقة'] || matchedGroup?.teams_link || '').trim();
-        const phone = String(row['الهاتف'] || row['رقم الهاتف'] || row['رقم التليفون'] || '').trim();
+        const phone = String(row['رقم التليفون'] || row['رقم الهاتف'] || row['الهاتف'] || row['التليفون'] || '').trim();
 
         // إذا كان المتقدم موجوداً بالفعل، نحدّث بياناته ونتيجة اختباره من الكشف
         if (nid && existingMap.has(nid)) {
           const ex = existingMap.get(nid);
           const patch = {};
           if (name) patch.name = name;
+          if (gender) patch.gender = gender;
+          if (governorate) patch.governorate = governorate;
+          if (phone) patch.phone = phone;
           if (normRowaq && APPLICANT_ROWAQ_OPTIONS.includes(normRowaq)) {
             patch.rowaq = normRowaq;
-            patch.gender = normRowaq.includes('سيدات') || normRowaq.includes('نساء') ? 'أنثى' : (normRowaq.includes('رجال') ? 'ذكر' : 'أطفال');
+            if (!patch.gender) patch.gender = normalizeApplicantGender('', normRowaq);
           }
           if (appliedLevel) patch.applied_level = appliedLevel;
           if (testedLevel) patch.tested_level = testedLevel;
@@ -395,7 +410,6 @@ function PlatformApplicantsList() {
         if (nid) seenNids.add(nid);
 
         const id = String(Date.now() + idx + Math.random());
-        const gender = normRowaq.includes('سيدات') || normRowaq.includes('نساء') ? 'أنثى' : (normRowaq.includes('رجال') ? 'ذكر' : 'أطفال');
 
         newApplicants.push({
           id,
@@ -403,6 +417,7 @@ function PlatformApplicantsList() {
           national_id: nid,
           passport_no: nid,
           phone,
+          governorate,
           rowaq: APPLICANT_ROWAQ_OPTIONS.includes(normRowaq) ? normRowaq : '',
           gender,
           level,
@@ -708,6 +723,9 @@ function PlatformApplicantsList() {
                   <th style={{ textAlign: 'center' }}>م</th>
                   <th style={{ textAlign: 'center' }}>الاسم</th>
                   {!isMohfez && <th style={{ textAlign: 'center' }}>الرقم القومي / جواز السفر</th>}
+                  <th style={{ textAlign: 'center' }}>النوع</th>
+                  <th style={{ textAlign: 'center' }}>المحافظة</th>
+                  {!isMohfez && <th style={{ textAlign: 'center' }}>رقم التليفون</th>}
                   <th style={{ textAlign: 'center' }}>الرواق</th>
                   <th style={{ textAlign: 'center' }}>المستوى المتقدم عليه</th>
                   <th style={{ textAlign: 'center' }}>المستوى وفق الاختبار</th>
@@ -722,13 +740,14 @@ function PlatformApplicantsList() {
               <tbody>
                 {paginated.length === 0 ? (
                   <tr>
-                    <td colSpan={isMohfez ? 11 : 12} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
+                    <td colSpan={isMohfez ? 13 : 15} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
                       لا توجد بيانات متقدمين حالياً (سيتم تسكين ورفع بيانات الدارسين لاحقاً).
                     </td>
                   </tr>
                 ) : (
                   paginated.map((a, idx) => {
                     const rowRowaq = normalizeApplicantRowaq(a.rowaq, a.gender);
+                    const rowGender = normalizeApplicantGender(a.gender, rowRowaq);
                     const rowLevels = getLevelsForApplicantRowaq(rowRowaq);
                     const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
                     const link = a.teams_link || grp?.teams_link || '';
@@ -738,6 +757,31 @@ function PlatformApplicantsList() {
                         <td style={{ fontWeight: 'bold' }}>{a.name}</td>
                         {!isMohfez && (
                           <td style={{ direction: 'ltr', textAlign: 'center' }}>{a.national_id || a.passport_no || '-'}</td>
+                        )}
+                        <td style={{ minWidth: 95 }}>
+                          <select
+                            className="form-select"
+                            style={{ padding: '4px 8px', fontSize: 13 }}
+                            value={rowGender}
+                            onChange={e => handleInlineUpdate(a, 'gender', e.target.value)}
+                          >
+                            <option value="">-- النوع --</option>
+                            {APPLICANT_GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ minWidth: 120 }}>
+                          <select
+                            className="form-select"
+                            style={{ padding: '4px 8px', fontSize: 13 }}
+                            value={a.governorate || ''}
+                            onChange={e => handleInlineUpdate(a, 'governorate', e.target.value)}
+                          >
+                            <option value="">-- المحافظة --</option>
+                            {GOVERNORATES_LIST.map(gov => <option key={gov} value={gov}>{gov}</option>)}
+                          </select>
+                        </td>
+                        {!isMohfez && (
+                          <td style={{ direction: 'ltr', textAlign: 'center' }}>{a.phone || '-'}</td>
                         )}
 
                         {/* الرواق - قائمة منسدلة */}

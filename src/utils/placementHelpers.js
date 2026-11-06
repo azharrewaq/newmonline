@@ -6,9 +6,23 @@
  */
 import { normalizeArabic } from './userScopeHelper';
 import { toLocalDateStr } from './sessionHelpers';
+import egyptCenters from '../data/egyptCenters';
 
 export const PLACEMENT_GROUP_CAPACITY = 25;
 export const PLACEMENT_TOTAL_GROUPS = 40;
+
+export const APPLICANT_GENDER_OPTIONS = ['ذكر', 'أنثى'];
+export const GOVERNORATES_LIST = Object.keys(egyptCenters);
+
+export const normalizeApplicantGender = (gender = '', rowaq = '') => {
+  const g = normalizeArabic(gender || '');
+  if (g.includes('انث') || g.includes('نسا') || g.includes('سيد')) return 'أنثى';
+  if (g.includes('ذكر') || g.includes('رجل') || g.includes('رجال')) return 'ذكر';
+  const r = normalizeArabic(rowaq || '');
+  if (r.includes('سيدات') || r.includes('نساء')) return 'أنثى';
+  if (r.includes('رجال')) return 'ذكر';
+  return '';
+};
 
 // خيارات الرواق للمتقدمين الجدد (بدون تجويد أو قراءات)
 export const APPLICANT_ROWAQ_OPTIONS = [

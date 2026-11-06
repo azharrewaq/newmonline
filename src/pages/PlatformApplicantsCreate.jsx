@@ -5,6 +5,9 @@ import { useAppData } from '../context/AppDataContext';
 import { quranSurahs } from '../data/quranSurahs';
 import {
   APPLICANT_ROWAQ_OPTIONS,
+  APPLICANT_GENDER_OPTIONS,
+  GOVERNORATES_LIST,
+  normalizeApplicantGender,
   getLevelsForApplicantRowaq,
   normalizeApplicantRowaq,
   normalizePreferredDays,
@@ -32,6 +35,8 @@ function PlatformApplicantsCreate() {
   const [form, setForm] = useState({
     name: '',
     national_id: '',
+    gender: '',
+    governorate: '',
     phone: '',
     rowaq: '',
     level: '',
@@ -54,7 +59,8 @@ function PlatformApplicantsCreate() {
     if (name === 'phone') {
       setForm(prev => ({ ...prev, phone: value.replace(/\D/g, '') }));
     } else if (name === 'rowaq') {
-      setForm(prev => ({ ...prev, rowaq: value, level: '', applied_level: '', tested_level: '' }));
+      const nextGender = value.includes('سيدات') || value.includes('نساء') ? 'أنثى' : (value.includes('رجال') ? 'ذكر' : '');
+      setForm(prev => ({ ...prev, rowaq: value, gender: nextGender || prev.gender, level: '', applied_level: '', tested_level: '' }));
     } else if (name === 'applied_level') {
       setForm(prev => ({ ...prev, applied_level: value, level: prev.tested_level || value }));
     } else if (name === 'tested_level') {
@@ -81,6 +87,8 @@ function PlatformApplicantsCreate() {
         setForm({
           name: a.name || '',
           national_id: a.national_id || a.passport_no || '',
+          gender: normalizeApplicantGender(a.gender, a.rowaq) || '',
+          governorate: a.governorate || '',
           phone: a.phone || '',
           rowaq: normalizeApplicantRowaq(a.rowaq, a.gender) || '',
           level: a.level || '',
@@ -119,13 +127,14 @@ function PlatformApplicantsCreate() {
       return;
     }
 
-    const gender = form.rowaq.includes('سيدات') || form.rowaq.includes('نساء') ? 'أنثى' : (form.rowaq.includes('رجال') ? 'ذكر' : 'أطفال');
+    const gender = normalizeApplicantGender(form.gender, form.rowaq);
     const finalForm = {
       ...form,
       name: form.name.trim(),
       national_id: nid,
       passport_no: nid,
       gender,
+      governorate: form.governorate || '',
       username: nid,
       password: nid,
       register_date: form.register_date || new Date().toLocaleDateString('ar-EG'),
@@ -194,8 +203,22 @@ function PlatformApplicantsCreate() {
             <input name="national_id" type="text" className="form-input" placeholder="الرقم القومي / جواز السفر" value={form.national_id} onChange={handleChange} />
           </div>
           <div className="form-group">
-            <label>رقم الهاتف (اختياري)</label>
-            <input name="phone" type="text" className="form-input" placeholder="رقم الهاتف" value={form.phone} onChange={handleChange} dir="ltr" />
+            <label>النوع (ذكر - أنثى)</label>
+            <select name="gender" className="form-select" value={form.gender} onChange={handleChange}>
+              <option value="">--- اختر النوع ---</option>
+              {APPLICANT_GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>المحافظة</label>
+            <select name="governorate" className="form-select" value={form.governorate} onChange={handleChange}>
+              <option value="">--- اختر المحافظة ---</option>
+              {GOVERNORATES_LIST.map(gov => <option key={gov} value={gov}>{gov}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>رقم التليفون</label>
+            <input name="phone" type="text" className="form-input" placeholder="رقم التليفون" value={form.phone} onChange={handleChange} dir="ltr" />
           </div>
 
           <div className="form-group">
