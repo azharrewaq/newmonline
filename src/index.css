@@ -4,6 +4,7 @@
   --bg-main: #0B0E14; /* very dark blue/black background */
   --bg-sidebar: #11141D; /* slightly lighter than main */
   --bg-card: #1C202B; /* card backgrounds */
+  --bg-lighter: #1C202B;
   --bg-header: #11141D;
   --text-primary: #FFFFFF;
   --text-secondary: #A0A5AF;
@@ -45,6 +46,7 @@
   --bg-main: #F3F4F6;
   --bg-sidebar: #FFFFFF;
   --bg-card: #FFFFFF;
+  --bg-lighter: #FFFFFF;
   --bg-header: #FFFFFF;
   --text-primary: #1F2937;
   --text-secondary: #4B5563;

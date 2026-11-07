@@ -35,7 +35,11 @@ function Header({ toggleSidebar }) {
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, []);
 
   const markAllRead = () => {
@@ -99,7 +103,7 @@ function Header({ toggleSidebar }) {
         </button>
 
         {/* Language Selector */}
-        <div className="lang-selector-container" ref={langRef} style={{ position: 'relative' }}>
+        <div className="lang-selector-container notranslate" translate="no" ref={langRef} style={{ position: 'relative' }}>
           <button 
             className="icon-btn lang-btn" 
             onClick={() => setShowLangMenu(!showLangMenu)}
@@ -107,13 +111,13 @@ function Header({ toggleSidebar }) {
             title="تغيير اللغة"
           >
             <Globe size={18} />
-            <span>{currentLang === 'ar' ? 'AR' : 'EN'}</span>
+            <span translate="no" className="notranslate">{currentLang === 'ar' ? 'AR' : 'EN'}</span>
           </button>
           
           {showLangMenu && (
             <div className="dropdown-menu lang-dropdown" style={{
               position: 'absolute', top: '100%', left: '0', 
-              backgroundColor: 'var(--bg-lighter)', border: '1px solid var(--border-subtle)',
+              backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
               borderRadius: '6px', padding: '6px 0', minWidth: '120px', zIndex: 100,
               boxShadow: '0 4px 12px rgba(0,0,0,0.15)', marginTop: '8px', textAlign: 'right'
             }}>
