@@ -222,30 +222,203 @@ function PlatformSessionsList() {
         </div>
 
         {myApplicant && scopedSessions.length === 0 && (
-          <div className="box-card" style={{ padding: 24, marginBottom: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+          <div className="box-card" style={{ padding: 28, marginBottom: 24, border: '1px solid rgba(212, 175, 55, 0.35)' }}>
+            {/* ترويسة إخطار موعد اختبار تحديد المستوى */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 14,
+              paddingBottom: 18,
+              marginBottom: 20,
+              borderBottom: '1px solid var(--border-subtle)'
+            }}>
               <div>
-                <h3 style={{ fontSize: 18, marginBottom: 6 }}>
-                  {myApplicant.group_no ? `مجموعة اختبار (${myApplicant.group_no})` : 'طلب التحاق وتحديد مستوى'}
-                  {examMohfez && examMohfez !== '-' ? ` — الشيخ/ ${examMohfez}` : ''}
+                <div style={{ fontSize: 13, color: 'var(--accent-gold)', fontWeight: 'bold', marginBottom: 4 }}>
+                  الجامع الأزهر الشريف — الإدارة العامة للجامع الأزهر (إدارة شئون الأروقة)
+                </div>
+                <h3 style={{ fontSize: 20, color: 'var(--text-primary)', margin: 0 }}>
+                  إخطار بموعد وبيانات لجنة اختبار تحديد المستوى
                 </h3>
-                <div style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.9 }}>
-                  <div>الدارس: <strong style={{ color: 'var(--text-primary)' }}>{myApplicant.name}</strong></div>
-                  <div>تاريخ الاختبار: <strong style={{ color: 'var(--text-primary)', direction: 'ltr', display: 'inline-block' }}>{myApplicant.exam_date || 'سيتم تحديده قريباً'}</strong> • الفترة/التوقيت: <strong style={{ color: 'var(--text-primary)' }}>{myApplicant.exam_time ? formatTime12Ar(myApplicant.exam_time) : examShift}</strong></div>
-                  <div>المحفظ الممتحن: <strong style={{ color: 'var(--text-primary)' }}>{examMohfez}</strong> • المنسق المشرف: <strong style={{ color: 'var(--text-primary)' }}>{examCoord}</strong></div>
-                  {myApplicant.rowaq && (
-                    <div>
-                      الرواق: <strong>{myApplicant.rowaq}</strong>
-                      {myApplicant.level ? ` • المستوى: ${myApplicant.level}` : ''}
-                      {myApplicant.stopped_surah ? ` • متوقف عند سورة: ${myApplicant.stopped_surah}` : ''}
-                      {myApplicant.preferred_days ? ` • الأيام المناسبة: ${myApplicant.preferred_days}` : ''}
-                      {myApplicant.preferred_time ? ` • التوقيت المناسب: ${myApplicant.preferred_time}` : ''}
-                    </div>
+              </div>
+              <span style={{
+                backgroundColor: myApplicant.status === 'تم تحديد المستوى' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(212, 175, 55, 0.15)',
+                color: myApplicant.status === 'تم تحديد المستوى' ? '#10b981' : 'var(--accent-gold)',
+                border: `1px solid ${myApplicant.status === 'تم تحديد المستوى' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(212, 175, 55, 0.4)'}`,
+                padding: '6px 16px',
+                borderRadius: 20,
+                fontSize: 14,
+                fontWeight: 'bold'
+              }}>
+                الحالة: {myApplicant.status || 'في انتظار الاختبار'}
+              </span>
+            </div>
+
+            {/* جدول بيانات الدارس ولجنة وموعد الاختبار */}
+            <div className="table-wrapper" style={{ marginBottom: 22 }}>
+              <table className="management-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 15 }}>
+                <thead>
+                  <tr>
+                    <th colSpan="4" style={{
+                      textAlign: 'center',
+                      backgroundColor: 'rgba(212, 175, 55, 0.12)',
+                      color: 'var(--accent-gold)',
+                      fontSize: 16,
+                      padding: '12px 16px',
+                      borderBottom: '1px solid var(--border-subtle)'
+                    }}>
+                      بطاقة بيانات الدارس وموعد لجنة الاختبار
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th style={{ width: '22%', textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                      اسم الدارس
+                    </th>
+                    <td style={{ width: '28%', fontWeight: 'bold', fontSize: 16, color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                      {myApplicant.name || '-'}
+                    </td>
+                    <th style={{ width: '22%', textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                      الرقم القومي / جواز السفر
+                    </th>
+                    <td style={{ width: '28%', fontWeight: 'bold', direction: 'ltr', textAlign: 'right', color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                      {myApplicant.national_id || myApplicant.passport_no || '-'}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                      الرواق المتقدم إليه
+                    </th>
+                    <td style={{ fontWeight: 'bold', color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                      {myApplicant.rowaq || '-'}
+                    </td>
+                    <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                      المستوى المتقدم عليه
+                    </th>
+                    <td style={{ fontWeight: 'bold', color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                      {myApplicant.applied_level || myApplicant.level || '-'}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(212, 175, 55, 0.08)', color: 'var(--accent-gold)', border: '1px solid var(--border-subtle)' }}>
+                      تاريخ يوم الاختبار
+                    </th>
+                    <td style={{ fontWeight: 'bold', fontSize: 16, padding: '14px 16px', backgroundColor: 'rgba(212, 175, 55, 0.04)', border: '1px solid var(--border-subtle)' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        direction: 'ltr',
+                        backgroundColor: 'rgba(212, 175, 55, 0.18)',
+                        color: 'var(--accent-gold)',
+                        padding: '4px 14px',
+                        borderRadius: 6,
+                        fontWeight: 'bold'
+                      }}>
+                        {myApplicant.exam_date || 'سيتم تحديده قريباً'}
+                      </span>
+                    </td>
+                    <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(212, 175, 55, 0.08)', color: 'var(--accent-gold)', border: '1px solid var(--border-subtle)' }}>
+                      توقيت الاختبار والفترة
+                    </th>
+                    <td style={{ fontWeight: 'bold', fontSize: 16, padding: '14px 16px', backgroundColor: 'rgba(212, 175, 55, 0.04)', border: '1px solid var(--border-subtle)' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        color: '#10b981',
+                        padding: '4px 14px',
+                        borderRadius: 6,
+                        fontWeight: 'bold'
+                      }}>
+                        {myApplicant.exam_time ? `الساعة ${formatTime12Ar(myApplicant.exam_time)}` : examShift}
+                      </span>
+                      {myPlacementGroup?.shift_label && myApplicant.exam_time && (
+                        <span style={{ fontSize: 13, color: 'var(--text-secondary)', marginRight: 8 }}>
+                          (فترة المجموعة: {myPlacementGroup.shift_label})
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                      رقم مجموعة الاختبار
+                    </th>
+                    <td style={{ fontWeight: 'bold', fontSize: 16, color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                      {myApplicant.group_no ? `مجموعة رقم (${myApplicant.group_no})` : 'جاري التسكين'}
+                    </td>
+                    <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                      المحفظ الممتحن
+                    </th>
+                    <td style={{ fontWeight: 'bold', color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                      {examMohfez && examMohfez !== '-' ? `الشيخ / ${examMohfez}` : 'سيتم تحديده قريباً'}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                      المنسق المشرف
+                    </th>
+                    <td style={{ fontWeight: 'bold', color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                      {examCoord && examCoord !== '-' ? examCoord : 'سيتم تحديده قريباً'}
+                    </td>
+                    <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                      نتيجة تحديد المستوى
+                    </th>
+                    <td style={{ fontWeight: 'bold', color: myApplicant.tested_level ? '#10b981' : 'var(--text-muted)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                      {myApplicant.tested_level
+                        ? `${myApplicant.tested_level}${myApplicant.stopped_surah ? ` (متوقف عند سورة: ${myApplicant.stopped_surah})` : ''}`
+                        : 'تُعلَن بعد أداء الاختبار'}
+                    </td>
+                  </tr>
+
+                  {(myApplicant.preferred_days || myApplicant.preferred_time) && (
+                    <tr>
+                      <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                        الأيام المناسبة للدراسة
+                      </th>
+                      <td style={{ fontWeight: 'bold', color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                        {myApplicant.preferred_days || '-'}
+                      </td>
+                      <th style={{ textAlign: 'right', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.03)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+                        التوقيت المناسب للدراسة
+                      </th>
+                      <td style={{ fontWeight: 'bold', color: 'var(--text-primary)', padding: '14px 16px', border: '1px solid var(--border-subtle)' }}>
+                        {myApplicant.preferred_time || '-'}
+                      </td>
+                    </tr>
                   )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* منطقة رابط الدخول للجنة الاختبار أو تنبيه موعد التفعيل */}
+            <div style={{
+              background: examJoin?.visible && examLink
+                ? 'rgba(16, 185, 129, 0.1)'
+                : 'rgba(212, 175, 55, 0.08)',
+              border: `1px solid ${examJoin?.visible && examLink ? 'rgba(16, 185, 129, 0.4)' : 'rgba(212, 175, 55, 0.35)'}`,
+              borderRadius: 10,
+              padding: '18px 22px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 16
+            }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: 4 }}>
+                  رابط الدخول إلى لجنة الاختبار (Microsoft Teams)
+                </div>
+                <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                  {examJoin?.visible && examLink
+                    ? 'اللجنة متاحة الآن — اضغط على الزر المقابل للدخول مباشرة إلى غرفة الاختبار.'
+                    : (examJoin?.reason || 'يظهر رابط الدخول للجنة تلقائياً في يوم الاختبار قبل الموعد بـ 15 دقيقة ويستمر لمدة 30 دقيقة بعد الموعد.')}
                 </div>
               </div>
 
-              {/* الرابط يختفي تماماً ماعدا دارسي اليوم الخاص بالاختبار (قبل الموعد بـ 15 دقيقة وبعده بـ 30 دقيقة) */}
               {examJoin?.visible && examLink ? (
                 <a
                   href={examLink}
@@ -253,18 +426,32 @@ function PlatformSessionsList() {
                   rel="noopener noreferrer"
                   onClick={() => updatePlatformApplicant(myApplicant.id, { exam_attended: true, exam_joined_at: new Date().toISOString() })}
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8, backgroundColor: '#10b981',
-                    color: '#fff', padding: '10px 18px', borderRadius: 6, textDecoration: 'none', fontWeight: 'bold', fontSize: 14
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    backgroundColor: '#10b981',
+                    color: '#fff',
+                    padding: '12px 24px',
+                    borderRadius: 8,
+                    textDecoration: 'none',
+                    fontWeight: 'bold',
+                    fontSize: 15,
+                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)'
                   }}
                 >
-                  <Video size={16} /> الدخول لاختبار تحديد المستوى
+                  <Video size={18} /> الدخول لاختبار تحديد المستوى الآن
                 </a>
               ) : (
                 <div style={{
-                  background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)',
-                  borderRadius: 6, padding: '8px 14px', fontSize: 13, color: 'var(--text-muted)'
+                  backgroundColor: 'rgba(212, 175, 55, 0.15)',
+                  border: '1px solid rgba(212, 175, 55, 0.4)',
+                  color: 'var(--accent-gold)',
+                  borderRadius: 8,
+                  padding: '10px 18px',
+                  fontSize: 14,
+                  fontWeight: 'bold'
                 }}>
-                  {examJoin?.reason || 'رابط الاختبار يظهر في يوم وموعد اختبارك فقط'}
+                  يُفعَّل الرابط يوم {myApplicant.exam_date || 'الاختبار'} قبل الموعد بـ 15 دقيقة
                 </div>
               )}
             </div>
