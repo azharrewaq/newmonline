@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import egyptCenters from '../data/egyptCenters';
 import {
   managersAPI, coordinatorsAPI, mohfezsAPI, studentsAPI, branchesAPI, sessionsAPI, usersAPI,
@@ -453,6 +453,8 @@ export function AppDataProvider({ children }) {
 
   // Database Persistent Synchronization
   const [dbSynced, setDbSynced] = useState(false);
+  const deletedApplicantIdsRef = useRef(new Set());
+  const pendingApplicantOpsRef = useRef(0);
 
   useEffect(() => {
     const syncWithBackend = async () => {
@@ -461,27 +463,7 @@ export function AppDataProvider({ children }) {
 
         const syncCollection = async (api, state, setState, key, mapper = null) => {
           const remoteData = await api.getAll().catch(() => null);
-          if (remoteData) {
-            const localData = getFromLocalStorage(key, []);
-            // Auto-migrate if remote is empty but local has records
-            if (remoteData.length === 0 && localData.length > 0) {
-              console.log(`🚀 Auto-migrating ${localData.length} items for ${key} to MongoDB...`);
-              try {
-                const sanitizedLocal = localData.map(({ _id, id, ...rest }) => rest);
-                await api.bulkImport(sanitizedLocal);
-                const refetched = await api.getAll().catch(() => null);
-                if (refetched) {
-                  let normalized = refetched.map(item => ({ ...item, id: item.id || item._id }));
-                  if (mapper) normalized = normalized.map(mapper);
-                  setState(normalized);
-                  saveToLocalStorage(key, normalized);
-                  return;
-                }
-              } catch (migrateErr) {
-                console.error(`✗ Migration failed for ${key}:`, migrateErr);
-              }
-            }
-
+          if (Array.isArray(remoteData)) {
             let normalizedData = remoteData.map(item => ({
               ...item,
               id: item.id || item._id
@@ -1789,13 +1771,70 @@ export function AppDataProvider({ children }) {
     }
   };
 
-  // ───────── الإجازات / الإعلانات / الردود / حضور الكادر ─────────
+  // ───────── الإجازات / الإعلانات / الردود / حضور الكادر / بيانات المنصة ─────────
   useEffect(() => { saveToLocalStorage('holidays', holidays); }, [holidays]);
   useEffect(() => { saveToLocalStorage('announcements', announcements); }, [announcements]);
   useEffect(() => { saveToLocalStorage('announcementReplies', announcementReplies); }, [announcementReplies]);
   useEffect(() => { saveToLocalStorage('staffAttendances', staffAttendances); }, [staffAttendances]);
   useEffect(() => { saveToLocalStorage('substitutions', substitutions); }, [substitutions]);
   useEffect(() => { saveToLocalStorage('placementGroups', placementGroups); }, [placementGroups]);
+  useEffect(() => { saveToLocalStorage('platformTopManagement', platformTopManagement); }, [platformTopManagement]);
+  useEffect(() => { saveToLocalStorage('platformSupervisors', platformSupervisors); }, [platformSupervisors]);
+  useEffect(() => { saveToLocalStorage('platformCoordinators', platformCoordinators); }, [platformCoordinators]);
+  useEffect(() => { saveToLocalStorage('platformMohfezs', platformMohfezs); }, [platformMohfezs]);
+  useEffect(() => { saveToLocalStorage('platformSessions', platformSessions); }, [platformSessions]);
+  useEffect(() => { saveToLocalStorage('platformStudents', platformStudents); }, [platformStudents]);
+  useEffect(() => { saveToLocalStorage('platformApplicants', platformApplicants); }, [platformApplicants]);
+  useEffect(() => { saveToLocalStorage('platformRowaqs', platformRowaqs); }, [platformRowaqs]);
+
+  // مزامنة فورية ودورية لبيانات المتقدمين الجدد ومجموعات تحديد المستوى بين جميع الأجهزة
+  useEffect(() => {
+    const syncApplicantsFromRemote = async () => {
+      if (pendingApplicantOpsRef.current > 0) return;
+      const [remoteApps, remotePG] = await Promise.all([
+        platformApplicantsAPI.getAll().catch(() => null),
+        placementGroupsAPI.getAll().catch(() => null),
+      ]);
+      if (pendingApplicantOpsRef.current > 0) return;
+
+      if (Array.isArray(remoteApps)) {
+        const deletedSet = deletedApplicantIdsRef.current;
+        const normApps = remoteApps
+          .map(item => ({ ...item, id: item.id || item._id }))
+          .filter(item => {
+            if (deletedSet.has(String(item.id))) return false;
+            if (item._id && deletedSet.has(String(item._id))) return false;
+            const nid = String(item.national_id || item.passport_no || '').trim();
+            if (nid && deletedSet.has(nid)) return false;
+            return true;
+          });
+        setPlatformApplicants(normApps);
+        saveToLocalStorage('platformApplicants', normApps);
+      }
+
+      if (Array.isArray(remotePG) && remotePG.length > 0) {
+        const normPG = remotePG
+          .map(g => ({ ...g, id: g.id || g._id }))
+          .sort((a, b) => (Number(a.group_no) || 0) - (Number(b.group_no) || 0));
+        setPlacementGroups(normPG);
+        saveToLocalStorage('placementGroups', normPG);
+      }
+    };
+
+    const intervalId = setInterval(syncApplicantsFromRemote, 10000);
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        syncApplicantsFromRemote();
+      }
+    };
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, []);
 
   const updatePlacementGroup = (id, updatedData) => {
     setPlacementGroups(prev => prev.map(g => String(g.id) === String(id) ? { ...g, ...updatedData } : g));
@@ -2089,17 +2128,78 @@ export function AppDataProvider({ children }) {
 
   const addPlatformApplicant = (item) => {
     const newItem = { ...item, id: String(Date.now()) };
-    setPlatformApplicants(prev => [...prev, newItem]);
-    platformApplicantsAPI.create(newItem).catch(err => console.error(err));
+    const nid = String(newItem.national_id || newItem.passport_no || '').trim();
+    if (nid) deletedApplicantIdsRef.current.delete(nid);
+    deletedApplicantIdsRef.current.delete(String(newItem.id));
+    setPlatformApplicants(prev => {
+      const next = [...prev, newItem];
+      saveToLocalStorage('platformApplicants', next);
+      return next;
+    });
+    pendingApplicantOpsRef.current += 1;
+    platformApplicantsAPI.create(newItem)
+      .then(created => {
+        if (created && created._id) {
+          setPlatformApplicants(prev => {
+            const next = prev.map(m => String(m.id) === String(newItem.id) ? { ...m, _id: created._id } : m);
+            saveToLocalStorage('platformApplicants', next);
+            return next;
+          });
+        }
+      })
+      .catch(err => console.error(err))
+      .finally(() => {
+        pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
+      });
   };
   const updatePlatformApplicant = (id, updatedItem) => {
-    setPlatformApplicants(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
-    platformApplicantsAPI.update(id, updatedItem).catch(err => console.error(err));
+    const target = platformApplicants.find(m => String(m.id) === String(id) || String(m._id) === String(id));
+    const remoteId = target?._id || id;
+    setPlatformApplicants(prev => {
+      const next = prev.map(m => (String(m.id) === String(id) || String(m._id) === String(id)) ? { ...m, ...updatedItem } : m);
+      saveToLocalStorage('platformApplicants', next);
+      return next;
+    });
+    pendingApplicantOpsRef.current += 1;
+    platformApplicantsAPI.update(remoteId, updatedItem)
+      .catch(err => console.error(err))
+      .finally(() => {
+        pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
+      });
   };
-  const deletePlatformApplicant = (id) => {
+  const deletePlatformApplicant = async (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
-      setPlatformApplicants(prev => prev.filter(m => String(m.id) !== String(id)));
-      platformApplicantsAPI.delete(id).catch(err => console.error(err));
+      const target = platformApplicants.find(m => String(m.id) === String(id) || String(m._id) === String(id));
+      const targetNid = String(target?.national_id || target?.passport_no || '').trim();
+      const idsToDelete = new Set([String(id)]);
+      if (target?.id) idsToDelete.add(String(target.id));
+      if (target?._id) idsToDelete.add(String(target._id));
+      if (targetNid) idsToDelete.add(targetNid);
+
+      idsToDelete.forEach(k => deletedApplicantIdsRef.current.add(k));
+
+      setPlatformApplicants(prev => {
+        const next = prev.filter(m => {
+          if (String(m.id) === String(id)) return false;
+          if (m._id && String(m._id) === String(id)) return false;
+          if (target?._id && String(m._id) === String(target._id)) return false;
+          if (targetNid && String(m.national_id || m.passport_no || '').trim() === targetNid) return false;
+          return true;
+        });
+        saveToLocalStorage('platformApplicants', next);
+        return next;
+      });
+
+      pendingApplicantOpsRef.current += 1;
+      try {
+        await Promise.all(
+          Array.from(idsToDelete).map(delKey =>
+            platformApplicantsAPI.delete(encodeURIComponent(delKey)).catch(err => console.error(err))
+          )
+        );
+      } finally {
+        pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
+      }
     }
   };
 
@@ -2109,12 +2209,21 @@ export function AppDataProvider({ children }) {
       id: a.id || String(Date.now() + Math.random())
     }));
 
+    newApplicants.forEach(a => {
+      if (a.id) deletedApplicantIdsRef.current.delete(String(a.id));
+      const nid = String(a.national_id || a.passport_no || '').trim();
+      if (nid) deletedApplicantIdsRef.current.delete(nid);
+    });
+
+    pendingApplicantOpsRef.current += 1;
     try {
       await platformApplicantsAPI.bulkImport(newApplicants);
     } catch (err) {
       console.error('Failed platform applicants bulk import:', err);
       alert('فشل حفظ المتقدمين في قاعدة البيانات: ' + err.message);
       throw err;
+    } finally {
+      pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
     }
 
     setPlatformApplicants(prev => {
@@ -2278,11 +2387,19 @@ export function AppDataProvider({ children }) {
     }
   };
 
-  const deleteAllPlatformApplicants = () => {
+  const deleteAllPlatformApplicants = async () => {
     if (!verifyDeleteAllPassword()) return;
     if (window.confirm('هل أنت متأكد من حذف جميع طلبات تقديم المنصة؟ هذه العملية لا يمكن التراجع عنها.')) {
       setPlatformApplicants([]);
-      platformApplicantsAPI.deleteAll().catch(err => console.error(err));
+      saveToLocalStorage('platformApplicants', []);
+      pendingApplicantOpsRef.current += 1;
+      try {
+        await platformApplicantsAPI.deleteAll();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
+      }
     }
   };
 

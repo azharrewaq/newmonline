@@ -23,18 +23,31 @@ function tryObjectId(id) {
   return null;
 }
 
-function buildIdQuery(id) {
+function buildIdQuery(rawId) {
+  const id = decodeURIComponent(String(rawId || ''));
+  const orConditions = [
+    { id: id },
+    { _id: id },
+    { username: id },
+    { national_id: id },
+    { passport_no: id },
+  ];
   const objId = tryObjectId(id);
   if (objId) {
-    return { $or: [{ _id: objId }, { id: id }] };
+    orConditions.unshift({ _id: objId });
   }
-  return { $or: [{ id: id }, { username: id }, { national_id: id }] };
+  const numId = Number(id);
+  if (!Number.isNaN(numId) && id.trim() !== '') {
+    orConditions.push({ id: numId });
+  }
+  return { $or: orConditions };
 }
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -135,11 +148,11 @@ export default async function handler(req, res) {
 
     // ── DELETE /api/:collection/:id ────────────────────────────────────────────
     if (req.method === 'DELETE' && segment2) {
-      const result = await col.deleteOne(buildIdQuery(segment2));
+      const result = await col.deleteMany(buildIdQuery(segment2));
       if (result.deletedCount === 0) {
         return res.status(200).json({ message: 'Not found', deletedCount: 0 });
       }
-      return res.status(200).json({ message: 'Deleted successfully' });
+      return res.status(200).json({ message: 'Deleted successfully', deletedCount: result.deletedCount });
     }
 
     return res.status(405).json({ message: 'Method not allowed' });
