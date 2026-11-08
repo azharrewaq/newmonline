@@ -550,7 +550,9 @@ export function exportExamSheetsToXLSX(
         sheet.groupNo && sheet.groupNo !== 'غير مسكن'
           ? `مجموعة ${sheet.groupNo}`
           : `كشف ${idx + 1}`;
-      if (sheet.coordinator) {
+      if (sheet.examDate && /^\d{4}-\d{2}-\d{2}$/.test(sheet.examDate)) {
+        baseName = `${baseName} - ${sheet.examDate}`.slice(0, 28);
+      } else if (sheet.coordinator) {
         baseName = `${baseName} - ${sheet.coordinator}`.slice(0, 28);
       }
       baseName = baseName.replace(/[\\/?*[\]:]/g, ' ').trim() || `كشف ${idx + 1}`;

@@ -326,12 +326,56 @@ export const buildExamSheetsByGroupAndCoordinator = (
   placementGroups = [],
   options = {}
 ) => {
-  const { targetGroupNo = '', targetCoordinator = '', targetDate = '', padToCapacity = false } = options;
+  const {
+    targetGroupNo = '',
+    targetCoordinator = '',
+    targetDate = '',
+    padToCapacity = false,
+    splitByDate = false,
+  } = options;
+
+  const normTargetDate = targetDate && targetDate !== 'ALL' && targetDate !== 'SPLIT_BY_DATE'
+    ? normalizeExamDate(targetDate)
+    : '';
+  const shouldSplitByDate = splitByDate || targetDate === 'SPLIT_BY_DATE';
 
   // إذا طُلب طباعة مجموعة محددة حتى لو كانت فارغة من الدارسين حالياً
   if (targetGroupNo) {
     const grp = placementGroups.find(g => String(g.group_no) === String(targetGroupNo));
-    const groupApplicants = applicants.filter(a => String(a.group_no || '') === String(targetGroupNo));
+    let groupApplicants = applicants.filter(a => String(a.group_no || '') === String(targetGroupNo));
+    if (normTargetDate) {
+      groupApplicants = groupApplicants.filter(a => normalizeExamDate(a.exam_date) === normTargetDate);
+    }
+
+    // إذا طلب تقسيم المجموعة كاملة إلى كشف مستقل لكل يوم اختبار
+    if (shouldSplitByDate && groupApplicants.length > 0) {
+      const byDate = new Map();
+      groupApplicants.forEach(a => {
+        const d = normalizeExamDate(a.exam_date) || 'بدون تاريخ';
+        if (!byDate.has(d)) byDate.set(d, []);
+        byDate.get(d).push(a);
+      });
+      return Array.from(byDate.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([d, rows]) => ({
+          groupNo: grp?.group_no || targetGroupNo,
+          shiftLabel: grp?.shift_label || (Number(targetGroupNo) <= 20 ? 'من 6 إلى 8 مساءً' : 'من 8 إلى 10 مساءً'),
+          scientificSupervisor: grp?.scientific_supervisor || rows[0]?.scientific_supervisor || '',
+          technicalSupervisor: grp?.technical_supervisor || rows[0]?.technical_supervisor || '',
+          coordinator: targetCoordinator || grp?.coordinator || rows[0]?.coordinator || '',
+          mohfez: grp?.mohfez || rows[0]?.mohfez || '',
+          examDate: d === 'بدون تاريخ' ? '' : d,
+          rows,
+          padCount: padToCapacity ? Math.max(rows.length, PLACEMENT_GROUP_CAPACITY) : Math.max(rows.length, 1),
+        }));
+    }
+
+    const uniqueDates = Array.from(
+      new Set(groupApplicants.map(a => normalizeExamDate(a.exam_date)).filter(Boolean))
+    ).sort();
+    const resolvedExamDate = normTargetDate
+      || (uniqueDates.length === 1 ? uniqueDates[0] : (uniqueDates.length > 1 ? `المجموعة كاملة (${uniqueDates.join(' ، ')})` : ''));
+
     return [{
       groupNo: grp?.group_no || targetGroupNo,
       shiftLabel: grp?.shift_label || (Number(targetGroupNo) <= 20 ? 'من 6 إلى 8 مساءً' : 'من 8 إلى 10 مساءً'),
@@ -339,24 +383,31 @@ export const buildExamSheetsByGroupAndCoordinator = (
       technicalSupervisor: grp?.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
       coordinator: targetCoordinator || grp?.coordinator || groupApplicants[0]?.coordinator || '',
       mohfez: grp?.mohfez || groupApplicants[0]?.mohfez || '',
-      examDate: normalizeExamDate(targetDate || groupApplicants[0]?.exam_date || ''),
+      examDate: resolvedExamDate,
       rows: groupApplicants,
-      padCount: groupApplicants.length === 0 || padToCapacity ? PLACEMENT_GROUP_CAPACITY : groupApplicants.length,
+      padCount: groupApplicants.length === 0 || padToCapacity
+        ? Math.max(groupApplicants.length, PLACEMENT_GROUP_CAPACITY)
+        : groupApplicants.length,
     }];
   }
 
-  // إذا كان هناك دارسون، نقسمهم إلى كشف مستقل لكل (مجموعة + منسق)
-  if (applicants.length > 0) {
+  // تصفية حسب اليوم المحدد في حال اختيار كل المجموعات ليوم معين
+  const sourceApplicants = normTargetDate
+    ? applicants.filter(a => normalizeExamDate(a.exam_date) === normTargetDate)
+    : applicants;
+
+  // إذا كان هناك دارسون، نقسمهم إلى كشف مستقل لكل (مجموعة + منسق) أو (+ يوم)
+  if (sourceApplicants.length > 0) {
     const map = new Map();
-    applicants.forEach(a => {
+    sourceApplicants.forEach(a => {
       const gNo = a.group_no ? String(a.group_no) : 'غير مسكن';
       const grp = placementGroups.find(g => String(g.group_no) === gNo);
       const sciSup = (a.scientific_supervisor || grp?.scientific_supervisor || '').trim();
       const techSup = (a.technical_supervisor || grp?.technical_supervisor || '').trim();
       const coord = (a.coordinator || grp?.coordinator || targetCoordinator || '').trim();
       const mohfez = (a.mohfez || grp?.mohfez || '').trim();
-      const examDate = normalizeExamDate(a.exam_date || targetDate || '');
-      const key = `${gNo}||${coord}`;
+      const examDate = normalizeExamDate(a.exam_date || normTargetDate || '');
+      const key = shouldSplitByDate ? `${gNo}||${coord}||${examDate}` : `${gNo}||${coord}`;
       if (!map.has(key)) {
         map.set(key, {
           groupNo: gNo,
@@ -366,6 +417,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
           coordinator: coord,
           mohfez,
           examDate,
+          datesSet: new Set(examDate ? [examDate] : []),
           rows: [],
         });
       }
@@ -373,6 +425,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
       if (!bucket.scientificSupervisor && sciSup) bucket.scientificSupervisor = sciSup;
       if (!bucket.technicalSupervisor && techSup) bucket.technicalSupervisor = techSup;
       if (!bucket.mohfez && mohfez) bucket.mohfez = mohfez;
+      if (examDate) bucket.datesSet.add(examDate);
       if (!bucket.examDate && examDate) bucket.examDate = examDate;
       bucket.rows.push(a);
     });
@@ -380,12 +433,19 @@ export const buildExamSheetsByGroupAndCoordinator = (
     const sheets = Array.from(map.values()).sort((a, b) => {
       const na = parseInt(a.groupNo, 10) || 999;
       const nb = parseInt(b.groupNo, 10) || 999;
-      return na - nb;
+      if (na !== nb) return na - nb;
+      return (a.examDate || '').localeCompare(b.examDate || '');
     });
-    return sheets.map(s => ({
-      ...s,
-      padCount: padToCapacity ? Math.max(s.rows.length, PLACEMENT_GROUP_CAPACITY) : Math.max(s.rows.length, 1),
-    }));
+    return sheets.map(s => {
+      const datesArr = Array.from(s.datesSet || []).sort();
+      const examDateLabel = normTargetDate
+        || (shouldSplitByDate ? s.examDate : (datesArr.length === 1 ? datesArr[0] : (datesArr.length > 1 ? `المجموعة كاملة (${datesArr.join(' ، ')})` : s.examDate)));
+      return {
+        ...s,
+        examDate: examDateLabel,
+        padCount: padToCapacity ? Math.max(s.rows.length, PLACEMENT_GROUP_CAPACITY) : Math.max(s.rows.length, 1),
+      };
+    });
   }
 
   // إذا لم يكن هناك دارسون بعد، نطبع نموذجاً فارغاً (25 صفاً) للمجموعات المطابقة

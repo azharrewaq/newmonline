@@ -94,6 +94,12 @@ function PlatformApplicantsList() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50;
 
+  // خيارات الطباعة والتصدير (اختيار المجموعة واليوم أو المجموعة كاملة)
+  const [printGroupNo, setPrintGroupNo] = useState('');
+  const [printDateMode, setPrintDateMode] = useState('ALL'); // 'ALL' | 'SPLIT_BY_DATE' | 'CUSTOM' | 'YYYY-MM-DD'
+  const [printCustomDate, setPrintCustomDate] = useState('');
+  const [groupRowDateMap, setGroupRowDateMap] = useState({}); // { [group_no]: 'ALL' | 'SPLIT_BY_DATE' | 'YYYY-MM-DD' }
+
   // تحديد المجموعات التابعة للمحفظ أو المنسق أو المشرف الحالي
   const myGroupNumbers = useMemo(() => {
     const uName = normalizeArabic(currentUser?.name || '');
@@ -254,27 +260,60 @@ function PlatformApplicantsList() {
     );
   };
 
-  // طباعة كشوف الاختبار (كشف لكل مجموعة ومنسق بالديباجة الرسمية للجامع الأزهر)
-  const handlePrintExamSheets = () => {
-    const sheets = buildExamSheetsByGroupAndCoordinator(filtered, placementGroups, {
-      targetGroupNo: filterGroupNo,
-      targetCoordinator: filterCoordinator,
-      targetDate: filterExamDate,
+  // الأيام المسجلة فعلياً في بيانات المتقدمين (مع عدد الدارسين لكل يوم حسب المجموعة المختارة في خيارات الطباعة)
+  const availableExamDatesForPrint = useMemo(() => {
+    const counts = new Map();
+    platformApplicants.forEach(a => {
+      if (printGroupNo && String(a.group_no || '') !== String(printGroupNo)) return;
+      if (myGroupNumbers !== null && (!a.group_no || !myGroupNumbers.has(Number(a.group_no)))) return;
+      const d = normalizeExamDate(a.exam_date);
+      if (!d) return;
+      counts.set(d, (counts.get(d) || 0) + 1);
     });
+    return Array.from(counts.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, count]) => ({ date, count }));
+  }, [platformApplicants, printGroupNo, myGroupNumbers]);
+
+  // بناء الكشوف وفق خيارات الطباعة المحددة (المجموعة + اليوم أو المجموعة كاملة)
+  const buildSheetsFromPrintOptions = () => {
+    const effectiveGroupNo = printGroupNo || filterGroupNo || '';
+    const resolvedDate =
+      printDateMode === 'CUSTOM'
+        ? normalizeExamDate(printCustomDate)
+        : printDateMode === 'ALL'
+          ? ''
+          : printDateMode; // 'SPLIT_BY_DATE' أو تاريخ محدد YYYY-MM-DD
+
+    const baseApplicants = effectiveGroupNo
+      ? platformApplicants.filter(a => String(a.group_no || '') === String(effectiveGroupNo))
+      : filtered;
+
+    return buildExamSheetsByGroupAndCoordinator(baseApplicants, placementGroups, {
+      targetGroupNo: effectiveGroupNo,
+      targetCoordinator: filterCoordinator,
+      targetDate: resolvedDate,
+      splitByDate: printDateMode === 'SPLIT_BY_DATE',
+      padToCapacity: Boolean(effectiveGroupNo),
+    });
+  };
+
+  // طباعة كشوف الاختبار حسب خيارات الطباعة (المجموعة واليوم أو المجموعة كاملة)
+  const handlePrintExamSheets = () => {
+    const sheets = buildSheetsFromPrintOptions();
     printPlacementExamSheets(sheets);
   };
 
-  // طباعة كشف مجموعة واحدة محددة (من تبويب المجموعات الـ 40)
+  // طباعة كشف مجموعة واحدة محددة (من تبويب المجموعات الـ 40) مع خيار اليوم أو المجموعة كاملة
   const handlePrintGroupSheet = (group) => {
-    const groupApplicants = platformApplicants.filter(a => {
-      if (Number(a.group_no) !== Number(group.group_no)) return false;
-      if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
-      return true;
-    });
+    const rowMode = groupRowDateMap[group.group_no] || (filterExamDate ? filterExamDate : 'ALL');
+    const targetDate = rowMode === 'ALL' ? '' : rowMode;
+    const groupApplicants = platformApplicants.filter(a => Number(a.group_no) === Number(group.group_no));
     const sheets = buildExamSheetsByGroupAndCoordinator(groupApplicants, placementGroups, {
       targetGroupNo: group.group_no,
       targetCoordinator: group.coordinator || '',
-      targetDate: filterExamDate,
+      targetDate,
+      splitByDate: rowMode === 'SPLIT_BY_DATE',
       padToCapacity: true,
     });
     printPlacementExamSheets(sheets);
@@ -282,72 +321,74 @@ function PlatformApplicantsList() {
 
   // طباعة كشوف جميع الـ 40 مجموعة دفعة واحدة
   const handlePrintAllFortyGroups = () => {
-    const allSheets = placementGroups.map(group => {
-      const groupApplicants = platformApplicants.filter(a => {
-        if (Number(a.group_no) !== Number(group.group_no)) return false;
-        if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
-        return true;
+    const resolvedDate =
+      printDateMode === 'CUSTOM'
+        ? normalizeExamDate(printCustomDate)
+        : printDateMode === 'ALL' || printDateMode === 'SPLIT_BY_DATE'
+          ? normalizeExamDate(filterExamDate)
+          : normalizeExamDate(printDateMode);
+
+    const allSheets = [];
+    placementGroups.forEach(group => {
+      if (myGroupNumbers !== null && !myGroupNumbers.has(Number(group.group_no))) return;
+      const groupApplicants = platformApplicants.filter(a => Number(a.group_no) === Number(group.group_no));
+      const sheets = buildExamSheetsByGroupAndCoordinator(groupApplicants, placementGroups, {
+        targetGroupNo: group.group_no,
+        targetCoordinator: group.coordinator || '',
+        targetDate: printDateMode === 'SPLIT_BY_DATE' ? 'SPLIT_BY_DATE' : resolvedDate,
+        splitByDate: printDateMode === 'SPLIT_BY_DATE',
+        padToCapacity: true,
       });
-      return {
-        groupNo: group.group_no,
-        shiftLabel: group.shift_label,
-        scientificSupervisor: group.scientific_supervisor || groupApplicants[0]?.scientific_supervisor || '',
-        technicalSupervisor: group.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
-        coordinator: group.coordinator || groupApplicants[0]?.coordinator || '',
-        mohfez: group.mohfez || groupApplicants[0]?.mohfez || '',
-        examDate: normalizeExamDate(filterExamDate || groupApplicants[0]?.exam_date || ''),
-        rows: groupApplicants,
-        padCount: PLACEMENT_GROUP_CAPACITY,
-      };
+      allSheets.push(...sheets);
     });
     printPlacementExamSheets(allSheets);
   };
 
-  // تصدير كشوف الاختبار إلى ملف Excel بنفس الديباجة والأعمدة الرسمية للطباعة
+  // تصدير كشوف الاختبار إلى ملف Excel حسب خيارات الطباعة (المجموعة واليوم أو المجموعة كاملة)
   const handleExportExamSheetsExcel = () => {
-    const sheets = buildExamSheetsByGroupAndCoordinator(filtered, placementGroups, {
-      targetGroupNo: filterGroupNo,
-      targetCoordinator: filterCoordinator,
-      targetDate: filterExamDate,
-    });
-    exportExamSheetsToXLSX(sheets, 'كشف_تحديد_مستوى_المنصة_المحلية_بالجامع_الأزهر_نوفمبر_2026');
+    const sheets = buildSheetsFromPrintOptions();
+    const effectiveGroupNo = printGroupNo || filterGroupNo || '';
+    const suffix = effectiveGroupNo ? `_مجموعة_${effectiveGroupNo}` : '';
+    exportExamSheetsToXLSX(sheets, `كشف_تحديد_مستوى_المنصة_المحلية_بالجامع_الأزهر${suffix}`);
   };
 
-  // تصدير كشف مجموعة واحدة محددة إلى Excel
+  // تصدير كشف مجموعة واحدة محددة إلى Excel (مع خيار اليوم أو المجموعة كاملة)
   const handleExportGroupSheetExcel = (group) => {
-    const groupApplicants = platformApplicants.filter(a => {
-      if (Number(a.group_no) !== Number(group.group_no)) return false;
-      if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
-      return true;
-    });
+    const rowMode = groupRowDateMap[group.group_no] || (filterExamDate ? filterExamDate : 'ALL');
+    const targetDate = rowMode === 'ALL' ? '' : rowMode;
+    const groupApplicants = platformApplicants.filter(a => Number(a.group_no) === Number(group.group_no));
     const sheets = buildExamSheetsByGroupAndCoordinator(groupApplicants, placementGroups, {
       targetGroupNo: group.group_no,
       targetCoordinator: group.coordinator || '',
-      targetDate: filterExamDate,
+      targetDate,
+      splitByDate: rowMode === 'SPLIT_BY_DATE',
       padToCapacity: true,
     });
-    exportExamSheetsToXLSX(sheets, `كشف_تحديد_المستوى_مجموعة_${group.group_no}`);
+    const dateSuffix = targetDate && targetDate !== 'SPLIT_BY_DATE' ? `_${targetDate}` : '_المجموعة_كاملة';
+    exportExamSheetsToXLSX(sheets, `كشف_تحديد_المستوى_مجموعة_${group.group_no}${dateSuffix}`);
   };
 
   // تصدير كشوف جميع الـ 40 مجموعة دفعة واحدة إلى Excel
   const handleExportAllFortyGroupsExcel = () => {
-    const allSheets = placementGroups.map(group => {
-      const groupApplicants = platformApplicants.filter(a => {
-        if (Number(a.group_no) !== Number(group.group_no)) return false;
-        if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
-        return true;
+    const resolvedDate =
+      printDateMode === 'CUSTOM'
+        ? normalizeExamDate(printCustomDate)
+        : printDateMode === 'ALL' || printDateMode === 'SPLIT_BY_DATE'
+          ? normalizeExamDate(filterExamDate)
+          : normalizeExamDate(printDateMode);
+
+    const allSheets = [];
+    placementGroups.forEach(group => {
+      if (myGroupNumbers !== null && !myGroupNumbers.has(Number(group.group_no))) return;
+      const groupApplicants = platformApplicants.filter(a => Number(a.group_no) === Number(group.group_no));
+      const sheets = buildExamSheetsByGroupAndCoordinator(groupApplicants, placementGroups, {
+        targetGroupNo: group.group_no,
+        targetCoordinator: group.coordinator || '',
+        targetDate: printDateMode === 'SPLIT_BY_DATE' ? 'SPLIT_BY_DATE' : resolvedDate,
+        splitByDate: printDateMode === 'SPLIT_BY_DATE',
+        padToCapacity: true,
       });
-      return {
-        groupNo: group.group_no,
-        shiftLabel: group.shift_label,
-        scientificSupervisor: group.scientific_supervisor || groupApplicants[0]?.scientific_supervisor || '',
-        technicalSupervisor: group.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
-        coordinator: group.coordinator || groupApplicants[0]?.coordinator || '',
-        mohfez: group.mohfez || groupApplicants[0]?.mohfez || '',
-        examDate: normalizeExamDate(filterExamDate || groupApplicants[0]?.exam_date || ''),
-        rows: groupApplicants,
-        padCount: PLACEMENT_GROUP_CAPACITY,
-      };
+      allSheets.push(...sheets);
     });
     exportExamSheetsToXLSX(allSheets, 'كشوف_تحديد_المستوى_40_مجموعة_الجامع_الأزهر_نوفمبر_2026');
   };
@@ -819,6 +860,93 @@ function PlatformApplicantsList() {
             </div>
           </div>
 
+          {/* ───────── شريط خيارات الطباعة والتصدير (اختيار المجموعة واليوم أو المجموعة كاملة) ───────── */}
+          <div className="box-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 'bold', color: 'var(--accent-gold)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Printer size={18} /> خيارات طباعة وتصدير كشوف الاختبار (اختيار المجموعة واليوم أو المجموعة كاملة):
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div className="form-group" style={{ minWidth: 220, marginBottom: 0 }}>
+                <label style={{ fontSize: 13 }}>اختيار المجموعة</label>
+                <select
+                  className="form-select"
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  value={printGroupNo}
+                  onChange={e => setPrintGroupNo(e.target.value)}
+                >
+                  <option value="">جميع المجموعات المتاحة (حسب الفلتر)</option>
+                  <optgroup label="الفترة الأولى: من 6 إلى 8 مساءً (1 - 20)">
+                    {placementGroups
+                      .filter(g => g.group_no <= 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
+                      .map(g => {
+                        const cnt = platformApplicants.filter(a => Number(a.group_no) === Number(g.group_no)).length;
+                        return (
+                          <option key={g.group_no} value={g.group_no}>
+                            مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''} ({cnt} دارس)
+                          </option>
+                        );
+                      })}
+                  </optgroup>
+                  <optgroup label="الفترة الثانية: من 8 إلى 10 مساءً (21 - 40)">
+                    {placementGroups
+                      .filter(g => g.group_no > 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
+                      .map(g => {
+                        const cnt = platformApplicants.filter(a => Number(a.group_no) === Number(g.group_no)).length;
+                        return (
+                          <option key={g.group_no} value={g.group_no}>
+                            مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''} ({cnt} دارس)
+                          </option>
+                        );
+                      })}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ minWidth: 260, flex: 1, marginBottom: 0 }}>
+                <label style={{ fontSize: 13 }}>اختيار اليوم أو المجموعة كاملة</label>
+                <select
+                  className="form-select"
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  value={printDateMode}
+                  onChange={e => setPrintDateMode(e.target.value)}
+                >
+                  <option value="ALL">المجموعة كاملة (شامل جميع الأيام في كشف واحد)</option>
+                  <option value="SPLIT_BY_DATE">المجموعة كاملة (مقسمة كشف مستقل لكل يوم)</option>
+                  {availableExamDatesForPrint.length > 0 && (
+                    <optgroup label="الأيام المسجلة في المجموعة">
+                      {availableExamDatesForPrint.map(item => (
+                        <option key={item.date} value={item.date}>
+                          يوم {item.date} ({item.count} دارس)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <option value="CUSTOM">تحديد تاريخ يوم آخر من التقويم...</option>
+                </select>
+              </div>
+
+              {printDateMode === 'CUSTOM' && (
+                <div className="form-group" style={{ width: 170, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>التاريخ المحدد</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ padding: '7px 10px', fontSize: 13 }}
+                    value={printCustomDate}
+                    onChange={e => setPrintCustomDate(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <button className="btn btn-primary" style={{ height: 38 }} onClick={handlePrintExamSheets}>
+                <Printer size={16} /> طباعة الكشف حسب الاختيار
+              </button>
+              <button className="btn btn-gold-outline" style={{ height: 38 }} onClick={handleExportExamSheetsExcel}>
+                <Download size={16} /> تصدير الكشف (إكسيل)
+              </button>
+            </div>
+          </div>
+
           <div className="table-controls" style={{ justifyContent: 'space-between', flexDirection: 'row-reverse' }}>
             <div className="action-buttons" style={{ flexDirection: 'row-reverse' }}>
               {isAdminOrSupervisor && (
@@ -1090,16 +1218,96 @@ function PlatformApplicantsList() {
       {/* ───────── التبويب الثاني: المجموعات الـ 40 (20 من 6-8 م | 20 من 8-10 م) ───────── */}
       {activeTab === 'groups' && (
         <div>
-          <div className="box-card" style={{ padding: '12px 20px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              طباعة أو تصدير كشف اختبار تحديد المستوى الرسمي (الجامع الأزهر - إدارة شئون الأروقة - نوفمبر 2026) لكل مجموعة ومنسق:
+          <div className="box-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 'bold', color: 'var(--accent-gold)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Printer size={18} /> خيارات طباعة وتصدير كشوف المجموعات (اختيار المجموعة واليوم أو المجموعة كاملة):
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={handlePrintAllFortyGroups}>
-                <Printer size={16} /> طباعة كشوف جميع المجموعات (40 مجموعة)
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div className="form-group" style={{ minWidth: 220, marginBottom: 0 }}>
+                <label style={{ fontSize: 13 }}>اختيار المجموعة</label>
+                <select
+                  className="form-select"
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  value={printGroupNo}
+                  onChange={e => setPrintGroupNo(e.target.value)}
+                >
+                  <option value="">جميع المجموعات (40 مجموعة)</option>
+                  <optgroup label="الفترة الأولى: من 6 إلى 8 مساءً (1 - 20)">
+                    {placementGroups
+                      .filter(g => g.group_no <= 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
+                      .map(g => {
+                        const cnt = platformApplicants.filter(a => Number(a.group_no) === Number(g.group_no)).length;
+                        return (
+                          <option key={g.group_no} value={g.group_no}>
+                            مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''} ({cnt} دارس)
+                          </option>
+                        );
+                      })}
+                  </optgroup>
+                  <optgroup label="الفترة الثانية: من 8 إلى 10 مساءً (21 - 40)">
+                    {placementGroups
+                      .filter(g => g.group_no > 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
+                      .map(g => {
+                        const cnt = platformApplicants.filter(a => Number(a.group_no) === Number(g.group_no)).length;
+                        return (
+                          <option key={g.group_no} value={g.group_no}>
+                            مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''} ({cnt} دارس)
+                          </option>
+                        );
+                      })}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ minWidth: 260, flex: 1, marginBottom: 0 }}>
+                <label style={{ fontSize: 13 }}>اختيار اليوم أو المجموعة كاملة</label>
+                <select
+                  className="form-select"
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  value={printDateMode}
+                  onChange={e => setPrintDateMode(e.target.value)}
+                >
+                  <option value="ALL">المجموعة كاملة (شامل جميع الأيام في كشف واحد)</option>
+                  <option value="SPLIT_BY_DATE">المجموعة كاملة (مقسمة كشف مستقل لكل يوم)</option>
+                  {availableExamDatesForPrint.length > 0 && (
+                    <optgroup label="الأيام المسجلة">
+                      {availableExamDatesForPrint.map(item => (
+                        <option key={item.date} value={item.date}>
+                          يوم {item.date} ({item.count} دارس)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <option value="CUSTOM">تحديد تاريخ يوم آخر من التقويم...</option>
+                </select>
+              </div>
+
+              {printDateMode === 'CUSTOM' && (
+                <div className="form-group" style={{ width: 170, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>التاريخ المحدد</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ padding: '7px 10px', fontSize: 13 }}
+                    value={printCustomDate}
+                    onChange={e => setPrintCustomDate(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <button
+                className="btn btn-primary"
+                style={{ height: 38 }}
+                onClick={printGroupNo ? handlePrintExamSheets : handlePrintAllFortyGroups}
+              >
+                <Printer size={16} /> {printGroupNo ? `طباعة مجموعة (${printGroupNo})` : 'طباعة جميع المجموعات'}
               </button>
-              <button className="btn btn-gold-outline" onClick={handleExportAllFortyGroupsExcel}>
-                <Download size={16} /> تصدير كشوف جميع المجموعات (إكسيل)
+              <button
+                className="btn btn-gold-outline"
+                style={{ height: 38 }}
+                onClick={printGroupNo ? handleExportExamSheetsExcel : handleExportAllFortyGroupsExcel}
+              >
+                <Download size={16} /> {printGroupNo ? `تصدير مجموعة (${printGroupNo}) إكسيل` : 'تصدير جميع المجموعات إكسيل'}
               </button>
             </div>
           </div>
@@ -1219,7 +1427,15 @@ function PlatformApplicantsList() {
                     </thead>
                     <tbody>
                       {shiftGroups.map(g => {
-                        const count = platformApplicants.filter(a => Number(a.group_no) === Number(g.group_no)).length;
+                        const groupApps = platformApplicants.filter(a => Number(a.group_no) === Number(g.group_no));
+                        const count = groupApps.length;
+                        const groupDatesMap = new Map();
+                        groupApps.forEach(a => {
+                          const d = normalizeExamDate(a.exam_date);
+                          if (d) groupDatesMap.set(d, (groupDatesMap.get(d) || 0) + 1);
+                        });
+                        const groupDates = Array.from(groupDatesMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+                        const rowSelectedDate = groupRowDateMap[g.group_no] || 'ALL';
                         return (
                           <tr key={g.id}>
                             <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
@@ -1324,33 +1540,55 @@ function PlatformApplicantsList() {
                             <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
                               {count} / {PLACEMENT_GROUP_CAPACITY}
                             </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                                <button
-                                  className="btn btn-outline"
-                                  style={{ padding: '4px 10px', fontSize: 12 }}
-                                  onClick={() => {
-                                    setFilterGroupNo(String(g.group_no));
-                                    setActiveTab('applicants');
-                                  }}
+                            <td style={{ textAlign: 'center', minWidth: 280 }}>
+                              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <select
+                                  className="form-select"
+                                  style={{ padding: '4px 8px', fontSize: 12, width: 'auto', minWidth: 145 }}
+                                  value={rowSelectedDate}
+                                  onChange={e => setGroupRowDateMap(prev => ({ ...prev, [g.group_no]: e.target.value }))}
+                                  title="اختر اليوم أو المجموعة كاملة للطباعة"
                                 >
-                                  دارسو المجموعة
-                                </button>
+                                  <option value="ALL">المجموعة كاملة ({count})</option>
+                                  {groupDates.length > 1 && (
+                                    <option value="SPLIT_BY_DATE">كشف مستقل لكل يوم</option>
+                                  )}
+                                  {groupDates.map(([d, c]) => (
+                                    <option key={d} value={d}>
+                                      يوم {d} ({c})
+                                    </option>
+                                  ))}
+                                </select>
                                 <button
                                   className="btn btn-gold-outline"
                                   style={{ padding: '4px 10px', fontSize: 12 }}
                                   onClick={() => handlePrintGroupSheet(g)}
-                                  title="طباعة كشف اختبار المجموعة"
+                                  title="طباعة كشف اختبار المجموعة حسب الاختيار"
                                 >
-                                  <Printer size={14} /> طباعة الكشف
+                                  <Printer size={14} /> طباعة
                                 </button>
                                 <button
                                   className="btn btn-outline"
                                   style={{ padding: '4px 10px', fontSize: 12 }}
                                   onClick={() => handleExportGroupSheetExcel(g)}
-                                  title="تصدير كشف اختبار المجموعة إكسيل"
+                                  title="تصدير كشف اختبار المجموعة إكسيل حسب الاختيار"
                                 >
                                   <Download size={14} /> إكسيل
+                                </button>
+                                <button
+                                  className="btn btn-outline"
+                                  style={{ padding: '4px 10px', fontSize: 12 }}
+                                  onClick={() => {
+                                    setFilterGroupNo(String(g.group_no));
+                                    if (rowSelectedDate && rowSelectedDate !== 'ALL' && rowSelectedDate !== 'SPLIT_BY_DATE') {
+                                      setFilterExamDate(rowSelectedDate);
+                                    } else {
+                                      setFilterExamDate('');
+                                    }
+                                    setActiveTab('applicants');
+                                  }}
+                                >
+                                  عرض الدارسين
                                 </button>
                               </div>
                             </td>
