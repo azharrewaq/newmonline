@@ -5,11 +5,40 @@ import { useAppData } from '../context/AppDataContext';
 import { countriesList } from '../data/countries';
 
 function PlatformStudentsCreate() {
-  const { addPlatformStudent, updatePlatformStudent, platformSessions, platformStudents, users, addUser, updateUser } = useAppData();
+  const {
+    addPlatformStudent,
+    updatePlatformStudent,
+    platformSessions,
+    platformStudents,
+    platformSupervisors = [],
+    platformMohfezs = [],
+    placementGroups = [],
+    users,
+    addUser,
+    updateUser
+  } = useAppData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const studentId = searchParams.get('id');
   const isEditing = !!studentId;
+
+  const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
+  const role = currentUser?.role || 'admin';
+  const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
+  const isScientificSupervisor = (() => {
+    if (role === 'admin' || role === 'platform_admin') return false;
+    if (isMohfez) return true;
+    const uName = (currentUser?.name || '').trim();
+    if (!uName) return false;
+    if (role === 'platform_supervisor') {
+      const supRec = platformSupervisors.find(s => (s.name || '').trim() === uName);
+      if (supRec?.specialization === 'علمي' || currentUser?.specialization === 'علمي') return true;
+    }
+    if (platformMohfezs.some(m => (m.name || '').trim() === uName)) return true;
+    if (placementGroups.some(g => (g.scientific_supervisor || '').trim() === uName)) return true;
+    return false;
+  })();
+  const hideStudentPhone = isMohfez || isScientificSupervisor;
 
   const [form, setForm] = useState({
     name: '', passport_no: '', birth_date: '', phone: '', email: '',
@@ -60,7 +89,7 @@ function PlatformStudentsCreate() {
   const handleSubmit = () => {
     
 
-    if (!form.name || !form.passport_no || !form.phone || !form.session_id || !form.country) {
+    if (!form.name || !form.passport_no || (!hideStudentPhone && !form.phone) || !form.session_id || !form.country) {
       alert('الرجاء ملء الحقول المطلوبة');
       return;
     }
@@ -156,7 +185,9 @@ function PlatformStudentsCreate() {
           <div className="form-group"><label>الاسم الكامل <span className="req">*</span></label><input name="name" type="text" className="form-input" placeholder="أدخل الاسم الكامل" value={form.name} onChange={handleChange} /></div>
           <div className="form-group"><label>رقم جواز السفر <span className="req">*</span></label><input name="passport_no" type="text" className="form-input" placeholder="أدخل رقم جواز السفر" value={form.passport_no} onChange={handleChange} /></div>
           <div className="form-group"><label>تاريخ الميلاد</label><input name="birth_date" type="date" className="form-input" value={form.birth_date} onChange={handleChange} /></div>
-          <div className="form-group"><label>رقم الهاتف <span className="req">*</span></label><input name="phone" type="text" className="form-input" placeholder="أدخل رقم الهاتف" value={form.phone} onChange={handleChange} dir="ltr"  /></div>
+          {!hideStudentPhone && (
+            <div className="form-group"><label>رقم الهاتف <span className="req">*</span></label><input name="phone" type="text" className="form-input" placeholder="أدخل رقم الهاتف" value={form.phone} onChange={handleChange} dir="ltr" /></div>
+          )}
           <div className="form-group"><label>البريد الإلكتروني</label><input name="email" type="email" className="form-input" placeholder="example@email.com" value={form.email} onChange={handleChange} dir="ltr" /></div>
           <div className="form-group"><label>الوظيفة (اختياري)</label><input name="job" type="text" className="form-input" placeholder="أدخل الوظيفة" value={form.job} onChange={handleChange} /></div>
           <div className="form-group" style={{ position: 'relative' }}>

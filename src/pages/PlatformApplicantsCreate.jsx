@@ -34,6 +34,24 @@ function PlatformApplicantsCreate() {
   const applicantId = searchParams.get('id');
   const isEditing = !!applicantId;
 
+  const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
+  const role = currentUser?.role || 'admin';
+  const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
+  const isScientificSupervisor = (() => {
+    if (role === 'admin' || role === 'platform_admin') return false;
+    if (isMohfez) return true;
+    const uName = (currentUser?.name || '').trim();
+    if (!uName) return false;
+    if (role === 'platform_supervisor') {
+      const supRec = (platformSupervisors || []).find(s => (s.name || '').trim() === uName);
+      if (supRec?.specialization === 'علمي' || currentUser?.specialization === 'علمي') return true;
+    }
+    if ((platformMohfezs || []).some(m => (m.name || '').trim() === uName)) return true;
+    if ((placementGroups || []).some(g => (g.scientific_supervisor || '').trim() === uName)) return true;
+    return false;
+  })();
+  const hideStudentPhone = isMohfez || isScientificSupervisor;
+
   const [form, setForm] = useState({
     name: '',
     national_id: '',
@@ -224,10 +242,12 @@ function PlatformApplicantsCreate() {
               {GOVERNORATES_LIST.map(gov => <option key={gov} value={gov}>{gov}</option>)}
             </select>
           </div>
-          <div className="form-group">
-            <label>رقم التليفون</label>
-            <input name="phone" type="text" className="form-input" placeholder="رقم التليفون" value={form.phone} onChange={handleChange} dir="ltr" />
-          </div>
+          {!hideStudentPhone && (
+            <div className="form-group">
+              <label>رقم التليفون</label>
+              <input name="phone" type="text" className="form-input" placeholder="رقم التليفون" value={form.phone} onChange={handleChange} dir="ltr" />
+            </div>
+          )}
 
           <div className="form-group">
             <label>الرواق</label>

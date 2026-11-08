@@ -59,6 +59,24 @@ function PlatformApplicantsList() {
   const scientificSupervisorsList = platformMohfezs;
   const technicalSupervisorsList = platformCoordinators;
 
+  // إخفاء رقم تليفون الدارس عن المحفظ والمشرف العلمي
+  const isScientificSupervisor = useMemo(() => {
+    if (role === 'admin' || role === 'platform_admin') return false;
+    if (isMohfez) return true;
+    const uName = normalizeArabic(currentUser?.name || '');
+    if (!uName) return false;
+    if (isSupervisor) {
+      const supRec = platformSupervisors.find(s => normalizeArabic(s.name || '') === uName);
+      if (supRec?.specialization === 'علمي' || currentUser?.specialization === 'علمي') return true;
+    }
+    if (platformMohfezs.some(m => normalizeArabic(m.name || '') === uName)) return true;
+    if (placementGroups.some(g => g.scientific_supervisor && normalizeArabic(g.scientific_supervisor) === uName)) return true;
+    if (platformApplicants.some(a => a.scientific_supervisor && normalizeArabic(a.scientific_supervisor) === uName)) return true;
+    return false;
+  }, [role, isMohfez, isSupervisor, currentUser, platformSupervisors, platformMohfezs, placementGroups, platformApplicants]);
+
+  const hideStudentPhone = isMohfez || isScientificSupervisor;
+
   // فلاتر جدول المتقدمين
   const [filterName, setFilterName] = useState('');
   const [filterRowaq, setFilterRowaq] = useState('');
@@ -334,7 +352,7 @@ function PlatformApplicantsList() {
 
   // تصدير جدول المتقدمين الحالي إلى Excel
   const handleExport = () => {
-    if (isMohfez) return;
+    if (hideStudentPhone) return;
     const exportData = filtered.map(a => {
       const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
       return {
@@ -342,7 +360,7 @@ function PlatformApplicantsList() {
         'الرقم القومي أو جواز السفر': a.national_id || a.passport_no || '',
         'النوع': normalizeApplicantGender(a.gender, a.rowaq) || '',
         'المحافظة': a.governorate || '',
-        'رقم التليفون': a.phone || '',
+        ...(hideStudentPhone ? {} : { 'رقم التليفون': a.phone || '' }),
         'الرواق': normalizeApplicantRowaq(a.rowaq, a.gender) || '',
         'المستوى المتقدم عليه': a.applied_level || a.level || '',
         'المستوى وفق الاختبار': a.tested_level || '',
@@ -826,7 +844,7 @@ function PlatformApplicantsList() {
               <button className="btn btn-outline" onClick={handleExportExamSheetsExcel}>
                 <Download size={16} /> تصدير كشف الاختبار (إكسيل)
               </button>
-              {!isMohfez && (
+              {!hideStudentPhone && (
                 <button className="btn btn-outline" onClick={handleExport}>
                   <Download size={16} /> تصدير
                 </button>
@@ -846,7 +864,7 @@ function PlatformApplicantsList() {
                   {!isMohfez && <th style={{ textAlign: 'center' }}>الرقم القومي / جواز السفر</th>}
                   <th style={{ textAlign: 'center' }}>النوع</th>
                   <th style={{ textAlign: 'center' }}>المحافظة</th>
-                  {!isMohfez && <th style={{ textAlign: 'center' }}>رقم التليفون</th>}
+                  {!hideStudentPhone && <th style={{ textAlign: 'center' }}>رقم التليفون</th>}
                   <th style={{ textAlign: 'center' }}>الرواق</th>
                   <th style={{ textAlign: 'center' }}>المستوى المتقدم عليه</th>
                   <th style={{ textAlign: 'center' }}>المستوى وفق الاختبار</th>
@@ -861,7 +879,7 @@ function PlatformApplicantsList() {
               <tbody>
                 {paginated.length === 0 ? (
                   <tr>
-                    <td colSpan={isMohfez ? 13 : 15} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
+                    <td colSpan={15 - (isMohfez ? 1 : 0) - (hideStudentPhone ? 1 : 0)} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
                       لا توجد بيانات متقدمين حالياً (سيتم تسكين ورفع بيانات الدارسين لاحقاً).
                     </td>
                   </tr>
@@ -901,7 +919,7 @@ function PlatformApplicantsList() {
                             {GOVERNORATES_LIST.map(gov => <option key={gov} value={gov}>{gov}</option>)}
                           </select>
                         </td>
-                        {!isMohfez && (
+                        {!hideStudentPhone && (
                           <td style={{ direction: 'ltr', textAlign: 'center' }}>{a.phone || '-'}</td>
                         )}
 

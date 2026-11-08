@@ -21,7 +21,9 @@ function PlatformStudentsList() {
     deleteAllPlatformStudents, 
     bulkImportPlatformStudents,
     platformCoordinators = [],
-    platformMohfezs = []
+    platformMohfezs = [],
+    platformSupervisors = [],
+    placementGroups = []
   } = useAppData();
   const importRef = useRef(null);
   
@@ -35,6 +37,22 @@ function PlatformStudentsList() {
   const isPlatformCoordinator = role === 'platform_coordinator';
   const isPlatformMohfez = role === 'platform_mohfez' || role === 'mohfez';
   const isStudent = role === 'student' || role === 'sharia_student';
+
+  const isScientificSupervisor = useMemo(() => {
+    if (isSuperAdmin || isPlatformAdmin) return false;
+    if (isPlatformMohfez) return true;
+    const uName = (currentUser?.name || '').trim();
+    if (!uName) return false;
+    if (isPlatformSupervisor) {
+      const supRec = platformSupervisors.find(s => (s.name || '').trim() === uName);
+      if (supRec?.specialization === 'علمي' || currentUser?.specialization === 'علمي') return true;
+    }
+    if (platformMohfezs.some(m => (m.name || '').trim() === uName)) return true;
+    if (placementGroups.some(g => (g.scientific_supervisor || '').trim() === uName)) return true;
+    return false;
+  }, [isSuperAdmin, isPlatformAdmin, isPlatformMohfez, isPlatformSupervisor, currentUser, platformSupervisors, platformMohfezs, placementGroups]);
+
+  const hideStudentPhone = isPlatformMohfez || isScientificSupervisor;
 
   const isAuthorized = isSuperAdmin || isPlatformAdmin || isPlatformSupervisor || isPlatformCoordinator || isPlatformMohfez || isStudent;
 
@@ -75,7 +93,7 @@ function PlatformStudentsList() {
   });
 
   const handleExport = () => {
-    if (isPlatformMohfez) return; // المحفظ لا يصدّر بيانات الدارسين (هاتف/جواز)
+    if (hideStudentPhone) return; // المحفظ والمشرف العلمي لا يصدرون أرقام تليفونات الدارسين
     const exportData = filtered.map(s => ({
       'الاسم': s.name,
       'الدولة': s.country || '',
@@ -85,7 +103,7 @@ function PlatformStudentsList() {
       'الحلقة': s.session_no || '',
       'رقم جواز السفر': s.passport_no || s.national_id || '',
       'الرقم القومي': s.national_id || '',
-      'رقم التليفون': s.phone || '',
+      ...(hideStudentPhone ? {} : { 'رقم التليفون': s.phone || '' }),
       'العنوان': s.address || '',
       'المؤهل': s.qualification || '',
       'الوظيفة': s.job || '',
@@ -248,7 +266,7 @@ function PlatformStudentsList() {
               حذف الجميع
             </button>
           )}
-          {!isPlatformMohfez && (
+          {!hideStudentPhone && (
             <button className="btn btn-outline" onClick={handleExport}>
               <Download size={16} /> تصدير
             </button>
