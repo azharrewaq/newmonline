@@ -249,7 +249,21 @@ export const platformStudentsAPI = {
 
 // Platform Applicants API
 export const platformApplicantsAPI = {
-  getAll: () => apiCall('/platformapplicants'),
+  getAll: async () => {
+    try {
+      const [b1, b2] = await Promise.all([
+        apiCall('/platformapplicants?batch=1'),
+        apiCall('/platformapplicants?batch=2')
+      ]);
+      if (Array.isArray(b1) && Array.isArray(b2)) {
+        return [...b1, ...b2];
+      }
+      if (Array.isArray(b1)) return b1;
+      return await apiCall('/platformapplicants');
+    } catch {
+      return await apiCall('/platformapplicants');
+    }
+  },
   create: (data) => apiCall('/platformapplicants', { method: 'POST', body: data }),
   update: (id, data) => apiCall(`/platformapplicants/${id}`, { method: 'PUT', body: data }),
   delete: (id) => apiCall(`/platformapplicants/${id}`, { method: 'DELETE' }),

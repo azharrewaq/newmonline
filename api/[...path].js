@@ -56,6 +56,8 @@ export default async function handler(req, res) {
     // Parse path directly from req.url for reliability across all Vercel versions
     // req.url example: /api/users  or  /api/users/123  or  /api/users/bulk-import
     const rawPath = req.url.split('?')[0]; // Remove query string
+    const urlObj = new URL(req.url, 'http://localhost');
+    const batchParam = urlObj.searchParams.get('batch');
     const segments = rawPath.split('/').filter(Boolean);
     // segments: ['api', 'users'] or ['api', 'users', '123'] or ['api', 'users', 'bulk-import']
     // segments[0] = 'api', segments[1] = collection, segments[2] = id or special
@@ -263,7 +265,15 @@ export default async function handler(req, res) {
 
     // ── GET /api/:collection ───────────────────────────────────────────────────
     if (req.method === 'GET' && !segment2) {
-      const docs = await col.find({}).toArray();
+      let queryCursor = col.find({});
+      if (batchParam === '1') {
+        queryCursor = queryCursor.skip(0).limit(3500);
+      } else if (batchParam === '2') {
+        queryCursor = queryCursor.skip(3500).limit(3500);
+      } else if (batchParam === '3') {
+        queryCursor = queryCursor.skip(7000).limit(3500);
+      }
+      const docs = await queryCursor.toArray();
       const acceptEncoding = String(req.headers['accept-encoding'] || '');
       const jsonStr = JSON.stringify(docs);
       if (acceptEncoding.includes('gzip') && jsonStr.length > 2048) {
