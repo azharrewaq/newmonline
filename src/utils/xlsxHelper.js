@@ -450,6 +450,7 @@ export function exportExamSheetsToXLSX(
       'درجة السؤال الثالث',
       'درجة السؤال الرابع',
       'درجة السؤال الخامس',
+      'المجموع',
       'الرواق',
       'المستوى المتقدم عليه',
       'المستوى وفق الاختبار',
@@ -488,6 +489,13 @@ export function exportExamSheetsToXLSX(
 
       for (let i = 0; i < totalRows; i++) {
         const a = sheet.rows?.[i] || {};
+        const excelRow = i + 4; // الصف الأول للبيانات هو الصف رقم 4 في الإكسيل
+        const qVals = [a.q1, a.q2, a.q3, a.q4, a.q5]
+          .map(v => (v === '' || v === null || v === undefined ? NaN : Number(v)))
+          .filter(v => !isNaN(v));
+        const totalCell = qVals.length > 0
+          ? { t: 'n', v: qVals.reduce((s, v) => s + v, 0), f: `IF(COUNT(D${excelRow}:H${excelRow})=0,"",SUM(D${excelRow}:H${excelRow}))` }
+          : { t: 's', v: '', f: `IF(COUNT(D${excelRow}:H${excelRow})=0,"",SUM(D${excelRow}:H${excelRow}))` };
         aoa.push([
           i + 1,
           a.name || '',
@@ -497,6 +505,7 @@ export function exportExamSheetsToXLSX(
           a.q3 ?? '',
           a.q4 ?? '',
           a.q5 ?? '',
+          totalCell,
           a.rowaq || '',
           a.applied_level || a.level || '',
           a.tested_level || '',
@@ -522,12 +531,12 @@ export function exportExamSheetsToXLSX(
 
       const ws = xlsxLib.utils.aoa_to_sheet(aoa);
       ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 14 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
         { s: { r: 1, c: 3 }, e: { r: 1, c: 5 } },
         { s: { r: 1, c: 6 }, e: { r: 1, c: 8 } },
         { s: { r: 1, c: 9 }, e: { r: 1, c: 11 } },
-        { s: { r: 1, c: 12 }, e: { r: 1, c: 13 } },
+        { s: { r: 1, c: 12 }, e: { r: 1, c: 14 } },
       ];
       ws['!cols'] = [
         { wch: 6 },
@@ -538,6 +547,7 @@ export function exportExamSheetsToXLSX(
         { wch: 16 },
         { wch: 16 },
         { wch: 16 },
+        { wch: 12 },
         { wch: 28 },
         { wch: 26 },
         { wch: 26 },

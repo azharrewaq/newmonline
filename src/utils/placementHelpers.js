@@ -496,6 +496,7 @@ export const printPlacementExamSheets = (sheets = []) => {
           <td class="col-q">${escapeHtml(a.q3 ?? '')}</td>
           <td class="col-q">${escapeHtml(a.q4 ?? '')}</td>
           <td class="col-q">${escapeHtml(a.q5 ?? '')}</td>
+          <td class="col-q col-total"></td>
           <td class="col-rowaq">${escapeHtml(rowaq)}</td>
           <td class="col-level">${escapeHtml(appliedLevel)}</td>
           <td class="col-level">${escapeHtml(testedLevel)}</td>
@@ -545,6 +546,7 @@ export const printPlacementExamSheets = (sheets = []) => {
               <th style="width: 5%;">درجة السؤال الثالث</th>
               <th style="width: 5%;">درجة السؤال الرابع</th>
               <th style="width: 5%;">درجة السؤال الخامس</th>
+              <th style="width: 5%;">المجموع</th>
               <th style="width: 10%;">الرواق</th>
               <th style="width: 8.5%;">المستوى المتقدم عليه</th>
               <th style="width: 8.5%;">المستوى وفق الاختبار</th>
