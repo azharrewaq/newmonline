@@ -1,4 +1,5 @@
 import { MongoClient, ObjectId } from 'mongodb';
+import zlib from 'zlib';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'monline';
@@ -234,9 +235,23 @@ export default async function handler(req, res) {
       return res.status(200).json({ deleted: result.deletedCount });
     }
 
+    // ── GET /api/:collection/latest ───────────────────────────────────────────
+    if (req.method === 'GET' && segment2 === 'latest') {
+      const docs = await col.find({}).sort({ _id: -1 }).limit(25).toArray();
+      return res.status(200).json(docs);
+    }
+
     // ── GET /api/:collection ───────────────────────────────────────────────────
     if (req.method === 'GET' && !segment2) {
       const docs = await col.find({}).toArray();
+      const acceptEncoding = String(req.headers['accept-encoding'] || '');
+      const jsonStr = JSON.stringify(docs);
+      if (acceptEncoding.includes('gzip') && jsonStr.length > 2048) {
+        const compressed = zlib.gzipSync(Buffer.from(jsonStr, 'utf-8'));
+        res.setHeader('Content-Encoding', 'gzip');
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.status(200).end(compressed);
+      }
       return res.status(200).json(docs);
     }
 
