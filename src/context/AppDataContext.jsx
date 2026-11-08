@@ -1837,8 +1837,23 @@ export function AppDataProvider({ children }) {
   }, []);
 
   const updatePlacementGroup = (id, updatedData) => {
-    setPlacementGroups(prev => prev.map(g => String(g.id) === String(id) ? { ...g, ...updatedData } : g));
-    placementGroupsAPI.update(id, updatedData).catch(err => console.error(err));
+    const targetGroup = placementGroups.find(g => String(g.id) === String(id) || String(g._id) === String(id) || String(g.group_no) === String(id));
+    const remoteId = targetGroup?._id || targetGroup?.id || id;
+    setPlacementGroups(prev => {
+      const next = prev.map(g =>
+        (String(g.id) === String(id) || String(g._id) === String(id) || (targetGroup && Number(g.group_no) === Number(targetGroup.group_no)))
+          ? { ...g, ...updatedData }
+          : g
+      );
+      saveToLocalStorage('placementGroups', next);
+      return next;
+    });
+    pendingApplicantOpsRef.current += 1;
+    placementGroupsAPI.update(remoteId, updatedData)
+      .catch(err => console.error(err))
+      .finally(() => {
+        pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
+      });
   };
 
   // تعيين محفظ بديل لحلقة في يوم محدد (يستبدل أي بديل سابق لنفس الحلقة واليوم)

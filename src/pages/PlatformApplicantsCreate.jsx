@@ -22,6 +22,7 @@ function PlatformApplicantsCreate() {
     updatePlatformApplicant,
     platformApplicants,
     placementGroups = [],
+    platformSupervisors = [],
     platformMohfezs = [],
     platformCoordinators = [],
     users,
@@ -47,6 +48,8 @@ function PlatformApplicantsCreate() {
     preferred_days: '',
     preferred_time: '',
     group_no: '',
+    scientific_supervisor: '',
+    technical_supervisor: '',
     mohfez: '',
     coordinator: '',
     exam_date: '',
@@ -71,6 +74,8 @@ function PlatformApplicantsCreate() {
       setForm(prev => ({
         ...prev,
         group_no: value,
+        scientific_supervisor: grp?.scientific_supervisor || prev.scientific_supervisor,
+        technical_supervisor: grp?.technical_supervisor || prev.technical_supervisor,
         mohfez: grp?.mohfez || prev.mohfez,
         coordinator: grp?.coordinator || prev.coordinator,
         exam_time: grp?.time_start || prev.exam_time,
@@ -99,6 +104,8 @@ function PlatformApplicantsCreate() {
           preferred_days: normalizePreferredDays(a.preferred_days) || '',
           preferred_time: a.preferred_time || '',
           group_no: a.group_no || '',
+          scientific_supervisor: a.scientific_supervisor || '',
+          technical_supervisor: a.technical_supervisor || '',
           mohfez: a.mohfez || '',
           coordinator: a.coordinator || '',
           exam_date: a.exam_date || '',
@@ -303,6 +310,22 @@ function PlatformApplicantsCreate() {
                   </option>
                 ))}
               </optgroup>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>المشرف العلمي</label>
+            <select name="scientific_supervisor" className="form-select" value={form.scientific_supervisor} onChange={handleChange}>
+              <option value="">--- اختر المشرف العلمي ---</option>
+              {platformSupervisors.map(s => <option key={s.id} value={s.name}>{s.name}{s.specialization ? ` (${s.specialization})` : ''}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>المشرف التقني</label>
+            <select name="technical_supervisor" className="form-select" value={form.technical_supervisor} onChange={handleChange}>
+              <option value="">--- اختر المشرف التقني ---</option>
+              {platformSupervisors.map(s => <option key={s.id} value={s.name}>{s.name}{s.specialization ? ` (${s.specialization})` : ''}</option>)}
             </select>
           </div>
 

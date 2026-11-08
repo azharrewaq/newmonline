@@ -78,8 +78,9 @@ function PlatformSupervisorsList() {
             <label>التخصص</label>
             <select className="form-select" value={filterSpecialization} onChange={e => setFilterSpecialization(e.target.value)}>
               <option value="">--- اختار التخصص ---</option>
-              <option value="إداري">إداري</option>
               <option value="علمي">علمي</option>
+              <option value="تقني">تقني</option>
+              <option value="إداري">إداري</option>
             </select>
           </div>
         </div>

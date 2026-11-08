@@ -139,6 +139,8 @@ export const createDefaultPlacementGroups = () => {
       time_start: isFirstShift ? '18:00' : '20:00',
       time_end: isFirstShift ? '20:00' : '22:00',
       capacity: PLACEMENT_GROUP_CAPACITY,
+      scientific_supervisor: '',
+      technical_supervisor: '',
       mohfez: '',
       coordinator: '',
       teams_link: '',
@@ -247,6 +249,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
     return [{
       groupNo: grp?.group_no || targetGroupNo,
       shiftLabel: grp?.shift_label || (Number(targetGroupNo) <= 20 ? 'من 6 إلى 8 مساءً' : 'من 8 إلى 10 مساءً'),
+      scientificSupervisor: grp?.scientific_supervisor || groupApplicants[0]?.scientific_supervisor || '',
+      technicalSupervisor: grp?.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
       coordinator: targetCoordinator || grp?.coordinator || groupApplicants[0]?.coordinator || '',
       mohfez: grp?.mohfez || groupApplicants[0]?.mohfez || '',
       examDate: targetDate || groupApplicants[0]?.exam_date || '',
@@ -261,6 +265,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
     applicants.forEach(a => {
       const gNo = a.group_no ? String(a.group_no) : 'غير مسكن';
       const grp = placementGroups.find(g => String(g.group_no) === gNo);
+      const sciSup = (a.scientific_supervisor || grp?.scientific_supervisor || '').trim();
+      const techSup = (a.technical_supervisor || grp?.technical_supervisor || '').trim();
       const coord = (a.coordinator || grp?.coordinator || targetCoordinator || '').trim();
       const mohfez = (a.mohfez || grp?.mohfez || '').trim();
       const examDate = (a.exam_date || targetDate || '').trim();
@@ -269,6 +275,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
         map.set(key, {
           groupNo: gNo,
           shiftLabel: grp?.shift_label || (Number(gNo) <= 20 ? 'من 6 إلى 8 مساءً' : (Number(gNo) <= 40 ? 'من 8 إلى 10 مساءً' : '')),
+          scientificSupervisor: sciSup,
+          technicalSupervisor: techSup,
           coordinator: coord,
           mohfez,
           examDate,
@@ -276,6 +284,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
         });
       }
       const bucket = map.get(key);
+      if (!bucket.scientificSupervisor && sciSup) bucket.scientificSupervisor = sciSup;
+      if (!bucket.technicalSupervisor && techSup) bucket.technicalSupervisor = techSup;
       if (!bucket.mohfez && mohfez) bucket.mohfez = mohfez;
       if (!bucket.examDate && examDate) bucket.examDate = examDate;
       bucket.rows.push(a);
@@ -300,6 +310,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
   return (groupsToPrint.length > 0 ? groupsToPrint : [placementGroups[0]]).map(grp => ({
     groupNo: grp?.group_no || 1,
     shiftLabel: grp?.shift_label || 'من 6 إلى 8 مساءً',
+    scientificSupervisor: grp?.scientific_supervisor || '',
+    technicalSupervisor: grp?.technical_supervisor || '',
     coordinator: grp?.coordinator || targetCoordinator || '',
     mohfez: grp?.mohfez || '',
     examDate: targetDate || '',
@@ -369,8 +381,10 @@ export const printPlacementExamSheets = (sheets = []) => {
 
         <div class="meta-bar">
           <div class="meta-item"><strong>المجموعة:</strong> <span>${groupDisplay}</span></div>
-          <div class="meta-item"><strong>المنسق:</strong> <span>${escapeHtml(sheet.coordinator || '........................................')}</span></div>
-          <div class="meta-item"><strong>المحفظ الممتحن:</strong> <span>${escapeHtml(sheet.mohfez || '........................................')}</span></div>
+          <div class="meta-item"><strong>المشرف العلمي:</strong> <span>${escapeHtml(sheet.scientificSupervisor || '........................')}</span></div>
+          <div class="meta-item"><strong>المشرف التقني:</strong> <span>${escapeHtml(sheet.technicalSupervisor || '........................')}</span></div>
+          <div class="meta-item"><strong>المنسق:</strong> <span>${escapeHtml(sheet.coordinator || '........................')}</span></div>
+          <div class="meta-item"><strong>المحفظ الممتحن:</strong> <span>${escapeHtml(sheet.mohfez || '........................')}</span></div>
           <div class="meta-item"><strong>عدد الدارسين:</strong> <span>${sheet.rows?.length || PLACEMENT_GROUP_CAPACITY}</span></div>
         </div>
 

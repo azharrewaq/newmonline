@@ -131,7 +131,7 @@ function PlatformSupervisorsCreate() {
           <div className="form-group"><label>البريد الإلكتروني</label><input name="email" type="email" className="form-input" placeholder="example@email.com" value={form.email} onChange={handleChange} dir="ltr" /></div>
           <div className="form-group"><label>رقم الهاتف</label><input name="phone" type="text" className="form-input" placeholder="أدخل رقم الهاتف" value={form.phone} onChange={handleChange} dir="ltr"  /></div>
           <div className="form-group"><label>الرقم القومي <span className="req">*</span></label><input name="national_id" type="text" className="form-input" placeholder="أدخل الرقم القومي" value={form.national_id} onChange={handleChange} /></div>
-          <div className="form-group"><label>التخصص</label><select name="specialization" className="form-select" value={form.specialization} onChange={handleChange}><option value="">اختار التخصص</option><option value="إداري">إداري</option><option value="علمي">علمي</option></select></div>
+          <div className="form-group"><label>التخصص</label><select name="specialization" className="form-select" value={form.specialization} onChange={handleChange}><option value="">اختار التخصص</option><option value="علمي">علمي</option><option value="تقني">تقني</option><option value="إداري">إداري</option></select></div>
           <div className="form-group"><label>رقم السجل</label><input name="registry_no" type="number" className="form-input" placeholder="أدخل رقم السجل" value={form.registry_no} onChange={handleChange} /></div>
         </div>
 

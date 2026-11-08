@@ -34,6 +34,7 @@ function PlatformApplicantsList() {
     bulkImportPlatformApplicants,
     placementGroups = [],
     updatePlacementGroup,
+    platformSupervisors = [],
     platformMohfezs = [],
     platformCoordinators = [],
   } = useAppData();
@@ -43,15 +44,41 @@ function PlatformApplicantsList() {
   const role = currentUser?.role || 'admin';
   const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
   const isCoordinator = role === 'platform_coordinator';
+  const isSupervisor = role === 'platform_supervisor';
   const isAdminOrSupervisor = ['admin', 'platform_admin', 'platform_supervisor'].includes(role);
 
   const [activeTab, setActiveTab] = useState('applicants'); // applicants | groups | compatible
+
+  // حالة تسكين مشرف لعدد من المجموعات دفعة واحدة
+  const [bulkSupType, setBulkSupType] = useState('scientific_supervisor'); // scientific_supervisor | technical_supervisor
+  const [bulkSupName, setBulkSupName] = useState('');
+  const [bulkFromGroup, setBulkFromGroup] = useState(1);
+  const [bulkToGroup, setBulkToGroup] = useState(10);
+
+  // قوائم المشرفين العلميين والتقنيين (مع إبقاء جميع المشرفين متاحين مرتبين حسب التخصص)
+  const scientificSupervisorsList = useMemo(() => {
+    return [...platformSupervisors].sort((a, b) => {
+      const aSci = a.specialization === 'علمي' ? 0 : 1;
+      const bSci = b.specialization === 'علمي' ? 0 : 1;
+      return aSci - bSci;
+    });
+  }, [platformSupervisors]);
+
+  const technicalSupervisorsList = useMemo(() => {
+    return [...platformSupervisors].sort((a, b) => {
+      const aTech = (a.specialization === 'تقني' || a.specialization === 'إداري') ? 0 : 1;
+      const bTech = (b.specialization === 'تقني' || b.specialization === 'إداري') ? 0 : 1;
+      return aTech - bTech;
+    });
+  }, [platformSupervisors]);
 
   // فلاتر جدول المتقدمين
   const [filterName, setFilterName] = useState('');
   const [filterRowaq, setFilterRowaq] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
   const [filterGroupNo, setFilterGroupNo] = useState('');
+  const [filterScientificSupervisor, setFilterScientificSupervisor] = useState('');
+  const [filterTechnicalSupervisor, setFilterTechnicalSupervisor] = useState('');
   const [filterCoordinator, setFilterCoordinator] = useState('');
   const [filterShift, setFilterShift] = useState(''); // '' | '6_8' | '8_10'
   const [filterExamDate, setFilterExamDate] = useState('');
@@ -60,28 +87,45 @@ function PlatformApplicantsList() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50;
 
-  // تحديد المجموعات التابعة للمحفظ أو المنسق الحالي
+  // تحديد المجموعات التابعة للمحفظ أو المنسق أو المشرف الحالي
   const myGroupNumbers = useMemo(() => {
-    if (isAdminOrSupervisor) return null; // يرى الجميع
     const uName = normalizeArabic(currentUser?.name || '');
+    if (isSupervisor && uName) {
+      const supNums = new Set();
+      placementGroups.forEach(g => {
+        if (
+          (g.scientific_supervisor && normalizeArabic(g.scientific_supervisor) === uName) ||
+          (g.technical_supervisor && normalizeArabic(g.technical_supervisor) === uName)
+        ) {
+          supNums.add(Number(g.group_no));
+        }
+      });
+      // إذا كان المشرف مسكناً على مجموعات محددة يرى مجموعاته، وإلا يرى الكل
+      if (supNums.size > 0) return supNums;
+    }
+    if (isAdminOrSupervisor) return null; // يرى الجميع
     const nums = new Set();
     placementGroups.forEach(g => {
       if (isMohfez && g.mohfez && normalizeArabic(g.mohfez) === uName) nums.add(Number(g.group_no));
       if (isCoordinator && g.coordinator && normalizeArabic(g.coordinator) === uName) nums.add(Number(g.group_no));
     });
     return nums;
-  }, [isAdminOrSupervisor, isMohfez, isCoordinator, currentUser, placementGroups]);
+  }, [isAdminOrSupervisor, isSupervisor, isMohfez, isCoordinator, currentUser, placementGroups]);
 
-  // تصفية المتقدمين حسب صلاحية المستخدم (أدمن / منسق / محفظ) + الفلاتر
+  // تصفية المتقدمين حسب صلاحية المستخدم (أدمن / مشرف / منسق / محفظ) + الفلاتر
   const filtered = useMemo(() => {
     const uName = normalizeArabic(currentUser?.name || '');
     return platformApplicants.filter(a => {
-      if (!isAdminOrSupervisor) {
+      if (myGroupNumbers !== null) {
         const gNo = Number(a.group_no);
-        const byGroup = gNo && myGroupNumbers?.has(gNo);
+        const byGroup = gNo && myGroupNumbers.has(gNo);
         const byMohfez = isMohfez && a.mohfez && normalizeArabic(a.mohfez) === uName;
         const byCoord = isCoordinator && a.coordinator && normalizeArabic(a.coordinator) === uName;
-        if (!byGroup && !byMohfez && !byCoord) return false;
+        const bySup = isSupervisor && (
+          (a.scientific_supervisor && normalizeArabic(a.scientific_supervisor) === uName) ||
+          (a.technical_supervisor && normalizeArabic(a.technical_supervisor) === uName)
+        );
+        if (!byGroup && !byMohfez && !byCoord && !bySup) return false;
       }
 
       if (filterName) {
@@ -97,8 +141,16 @@ function PlatformApplicantsList() {
       const testLevel = a.tested_level || '';
       if (filterLevel && appLevel !== filterLevel && testLevel !== filterLevel) return false;
       if (filterGroupNo && String(a.group_no || '') !== String(filterGroupNo)) return false;
+      const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
+      if (filterScientificSupervisor) {
+        const aSci = a.scientific_supervisor || grp?.scientific_supervisor || '';
+        if (normalizeArabic(aSci) !== normalizeArabic(filterScientificSupervisor)) return false;
+      }
+      if (filterTechnicalSupervisor) {
+        const aTech = a.technical_supervisor || grp?.technical_supervisor || '';
+        if (normalizeArabic(aTech) !== normalizeArabic(filterTechnicalSupervisor)) return false;
+      }
       if (filterCoordinator) {
-        const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
         const aCoord = a.coordinator || grp?.coordinator || '';
         if (normalizeArabic(aCoord) !== normalizeArabic(filterCoordinator)) return false;
       }
@@ -111,9 +163,10 @@ function PlatformApplicantsList() {
       return true;
     });
   }, [
-    platformApplicants, isAdminOrSupervisor, isMohfez, isCoordinator,
+    platformApplicants, isSupervisor, isMohfez, isCoordinator,
     currentUser, myGroupNumbers, filterName, filterRowaq, filterLevel,
-    filterGroupNo, filterCoordinator, placementGroups, filterShift, filterExamDate, filterDays, filterTime
+    filterGroupNo, filterScientificSupervisor, filterTechnicalSupervisor,
+    filterCoordinator, placementGroups, filterShift, filterExamDate, filterDays, filterTime
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -138,6 +191,8 @@ function PlatformApplicantsList() {
     if (field === 'group_no') {
       const grp = placementGroups.find(g => String(g.group_no) === String(value));
       if (grp) {
+        patch.scientific_supervisor = grp.scientific_supervisor || applicant.scientific_supervisor || '';
+        patch.technical_supervisor = grp.technical_supervisor || applicant.technical_supervisor || '';
         patch.mohfez = grp.mohfez || applicant.mohfez || '';
         patch.coordinator = grp.coordinator || applicant.coordinator || '';
         patch.exam_time = grp.time_start || applicant.exam_time || '';
@@ -158,6 +213,22 @@ function PlatformApplicantsList() {
   // تحديث بيانات إحدى المجموعات الـ 40 + عكسها على المتقدمين المسكنين فيها
   const handleGroupUpdate = (group, field, value) => {
     updatePlacementGroup(group.id, { [field]: value });
+  };
+
+  // تسكين مشرف علمي أو مشرف تقني لعدد من المجموعات دفعة واحدة
+  const handleBulkAssignSupervisor = () => {
+    const from = Math.max(1, Math.min(40, Number(bulkFromGroup) || 1));
+    const to = Math.max(from, Math.min(40, Number(bulkToGroup) || from));
+    const targetGroups = placementGroups.filter(g => g.group_no >= from && g.group_no <= to);
+    targetGroups.forEach(g => {
+      updatePlacementGroup(g.id, { [bulkSupType]: bulkSupName });
+    });
+    const label = bulkSupType === 'scientific_supervisor' ? 'المشرف العلمي' : 'المشرف التقني';
+    alert(
+      bulkSupName
+        ? `تم تسكين ${label} (${bulkSupName}) على المجموعات من (${from}) إلى (${to}) بنجاح`
+        : `تم إخلاء خانة ${label} للمجموعات من (${from}) إلى (${to})`
+    );
   };
 
   // طباعة كشوف الاختبار (كشف لكل مجموعة ومنسق بالديباجة الرسمية للجامع الأزهر)
@@ -197,6 +268,8 @@ function PlatformApplicantsList() {
       return {
         groupNo: group.group_no,
         shiftLabel: group.shift_label,
+        scientificSupervisor: group.scientific_supervisor || groupApplicants[0]?.scientific_supervisor || '',
+        technicalSupervisor: group.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
         coordinator: group.coordinator || groupApplicants[0]?.coordinator || '',
         mohfez: group.mohfez || groupApplicants[0]?.mohfez || '',
         examDate: filterExamDate || groupApplicants[0]?.exam_date || '',
@@ -244,6 +317,8 @@ function PlatformApplicantsList() {
       return {
         groupNo: group.group_no,
         shiftLabel: group.shift_label,
+        scientificSupervisor: group.scientific_supervisor || groupApplicants[0]?.scientific_supervisor || '',
+        technicalSupervisor: group.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
         coordinator: group.coordinator || groupApplicants[0]?.coordinator || '',
         mohfez: group.mohfez || groupApplicants[0]?.mohfez || '',
         examDate: filterExamDate || groupApplicants[0]?.exam_date || '',
@@ -273,6 +348,8 @@ function PlatformApplicantsList() {
         'التوقيت المناسب': a.preferred_time || '',
         'رقم المجموعة': a.group_no || '',
         'فترة المجموعة': grp?.shift_label || '',
+        'المشرف العلمي': a.scientific_supervisor || grp?.scientific_supervisor || '',
+        'المشرف التقني': a.technical_supervisor || grp?.technical_supervisor || '',
         'المحفظ': a.mohfez || grp?.mohfez || '',
         'المنسق': a.coordinator || grp?.coordinator || '',
         'تاريخ الاختبار': a.exam_date || '',
@@ -298,6 +375,8 @@ function PlatformApplicantsList() {
       'الأيام المناسبة': '',
       'التوقيت المناسب': '',
       'رقم المجموعة': '',
+      'المشرف العلمي': '',
+      'المشرف التقني': '',
       'المحفظ': '',
       'المنسق': '',
       'تاريخ الاختبار': '',
@@ -362,6 +441,8 @@ function PlatformApplicantsList() {
         const groupNo = groupNoRaw ? Number(groupNoRaw) : '';
         const matchedGroup = groupNo ? placementGroups.find(g => Number(g.group_no) === Number(groupNo)) : null;
 
+        const scientificSupervisor = String(row['المشرف العلمي'] || row['المشرف العلمى'] || matchedGroup?.scientific_supervisor || '').trim();
+        const technicalSupervisor = String(row['المشرف التقني'] || row['المشرف التقنى'] || matchedGroup?.technical_supervisor || '').trim();
         const mohfez = String(row['المحفظ'] || matchedGroup?.mohfez || '').trim();
         const coordinator = String(row['المنسق'] || matchedGroup?.coordinator || '').trim();
         const examDate = String(row['تاريخ الاختبار'] || '').trim();
@@ -393,6 +474,8 @@ function PlatformApplicantsList() {
           if (q4 !== '') patch.q4 = q4;
           if (q5 !== '') patch.q5 = q5;
           if (groupNo) patch.group_no = groupNo;
+          if (scientificSupervisor) patch.scientific_supervisor = scientificSupervisor;
+          if (technicalSupervisor) patch.technical_supervisor = technicalSupervisor;
           if (mohfez) patch.mohfez = mohfez;
           if (coordinator) patch.coordinator = coordinator;
           if (examDate) patch.exam_date = examDate;
@@ -432,6 +515,8 @@ function PlatformApplicantsList() {
           q4,
           q5,
           group_no: groupNo,
+          scientific_supervisor: scientificSupervisor,
+          technical_supervisor: technicalSupervisor,
           mohfez,
           coordinator,
           exam_date: examDate,
@@ -602,6 +687,38 @@ function PlatformApplicantsList() {
               </div>
 
               <div className="form-group">
+                <label>المشرف العلمي</label>
+                <select
+                  className="form-select"
+                  value={filterScientificSupervisor}
+                  onChange={e => { setFilterScientificSupervisor(e.target.value); setCurrentPage(1); }}
+                >
+                  <option value="">--- كل المشرفين العلميين ---</option>
+                  {scientificSupervisorsList.map(s => (
+                    <option key={s.id} value={s.name}>
+                      {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>المشرف التقني</label>
+                <select
+                  className="form-select"
+                  value={filterTechnicalSupervisor}
+                  onChange={e => { setFilterTechnicalSupervisor(e.target.value); setCurrentPage(1); }}
+                >
+                  <option value="">--- كل المشرفين التقنيين ---</option>
+                  {technicalSupervisorsList.map(s => (
+                    <option key={s.id} value={s.name}>
+                      {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label>المنسق المشرف</label>
                 <select
                   className="form-select"
@@ -666,7 +783,8 @@ function PlatformApplicantsList() {
                 className="btn btn-outline"
                 onClick={() => {
                   setFilterName(''); setFilterRowaq(''); setFilterLevel('');
-                  setFilterGroupNo(''); setFilterCoordinator(''); setFilterShift(''); setFilterExamDate('');
+                  setFilterGroupNo(''); setFilterScientificSupervisor(''); setFilterTechnicalSupervisor('');
+                  setFilterCoordinator(''); setFilterShift(''); setFilterExamDate('');
                   setFilterDays(''); setFilterTime(''); setCurrentPage(1);
                 }}
               >
@@ -962,11 +1080,88 @@ function PlatformApplicantsList() {
               </button>
             </div>
           </div>
+
+          {/* أداة تسكين مشرف علمي أو مشرف تقني لعدد من المجموعات دفعة واحدة */}
+          {isAdminOrSupervisor && (
+            <div className="box-card" style={{ padding: '16px 20px', marginBottom: 20 }}>
+              <div style={{ fontSize: 15, fontWeight: 'bold', color: 'var(--accent-gold)', marginBottom: 12 }}>
+                تسكين مشرف (علمي / تقني) للإشراف على عدد من المجموعات دفعة واحدة:
+              </div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div className="form-group" style={{ minWidth: 180, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>نوع الإشراف</label>
+                  <select
+                    className="form-select"
+                    style={{ padding: '8px 12px', fontSize: 13 }}
+                    value={bulkSupType}
+                    onChange={e => { setBulkSupType(e.target.value); setBulkSupName(''); }}
+                  >
+                    <option value="scientific_supervisor">المشرف العلمي</option>
+                    <option value="technical_supervisor">المشرف التقني</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ minWidth: 230, flex: 1, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>اسم المشرف</label>
+                  <select
+                    className="form-select"
+                    style={{ padding: '8px 12px', fontSize: 13 }}
+                    value={bulkSupName}
+                    onChange={e => setBulkSupName(e.target.value)}
+                  >
+                    <option value="">--- اختر المشرف (أو اتركه فارغاً للإخلاء) ---</option>
+                    {(bulkSupType === 'scientific_supervisor' ? scientificSupervisorsList : technicalSupervisorsList).map(s => (
+                      <option key={s.id} value={s.name}>
+                        {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ width: 140, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>من مجموعة رقم</label>
+                  <select
+                    className="form-select"
+                    style={{ padding: '8px 12px', fontSize: 13 }}
+                    value={bulkFromGroup}
+                    onChange={e => setBulkFromGroup(Number(e.target.value))}
+                  >
+                    {placementGroups.map(g => (
+                      <option key={g.group_no} value={g.group_no}>مجموعة {g.group_no}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ width: 140, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>إلى مجموعة رقم</label>
+                  <select
+                    className="form-select"
+                    style={{ padding: '8px 12px', fontSize: 13 }}
+                    value={bulkToGroup}
+                    onChange={e => setBulkToGroup(Number(e.target.value))}
+                  >
+                    {placementGroups.map(g => (
+                      <option key={g.group_no} value={g.group_no}>مجموعة {g.group_no}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button className="btn btn-primary" style={{ height: 38 }} onClick={handleBulkAssignSupervisor}>
+                  تسكين للمجموعات المحددة
+                </button>
+              </div>
+            </div>
+          )}
+
           {[
             { title: 'الفترة الأولى: 20 مجموعة (من 6 إلى 8 مساءً)', min: 1, max: 20, badgeColor: '#3b82f6' },
             { title: 'الفترة الثانية: 20 مجموعة (من 8 إلى 10 مساءً)', min: 21, max: 40, badgeColor: '#10b981' },
           ].map(shift => {
-            const shiftGroups = placementGroups.filter(g => g.group_no >= shift.min && g.group_no <= shift.max);
+            const shiftGroups = placementGroups.filter(g => {
+              if (g.group_no < shift.min || g.group_no > shift.max) return false;
+              if (myGroupNumbers !== null && !myGroupNumbers.has(Number(g.group_no))) return false;
+              return true;
+            });
             return (
               <div key={shift.title} className="box-card" style={{ padding: 20, marginBottom: 24 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, flexWrap: 'wrap', gap: 10 }}>
@@ -974,7 +1169,7 @@ function PlatformApplicantsList() {
                     <Clock size={18} style={{ color: shift.badgeColor }} /> {shift.title}
                   </h3>
                   <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    سعة كل مجموعة: {PLACEMENT_GROUP_CAPACITY} دارساً يومياً (تسكين المحفظين والمنسقين والدارسين متاح في أي وقت)
+                    سعة كل مجموعة: {PLACEMENT_GROUP_CAPACITY} دارساً يومياً (كل مجموعة لها محفظ ومنسق، ويشرف المشرف العلمي والتقني على عدد من المجموعات)
                   </span>
                 </div>
 
@@ -984,6 +1179,8 @@ function PlatformApplicantsList() {
                       <tr>
                         <th style={{ textAlign: 'center' }}>رقم المجموعة</th>
                         <th style={{ textAlign: 'center' }}>الفترة الزمنية</th>
+                        <th style={{ textAlign: 'center' }}>المشرف العلمي</th>
+                        <th style={{ textAlign: 'center' }}>المشرف التقني</th>
                         <th style={{ textAlign: 'center' }}>المحفظ (اسم الحلقة/المجموعة)</th>
                         <th style={{ textAlign: 'center' }}>المنسق المشرف</th>
                         <th style={{ textAlign: 'center' }}>رابط تيمز (Teams)</th>
@@ -1007,6 +1204,44 @@ function PlatformApplicantsList() {
                               }}>
                                 {g.shift_label}
                               </span>
+                            </td>
+                            <td style={{ minWidth: 185 }}>
+                              {isAdminOrSupervisor ? (
+                                <select
+                                  className="form-select"
+                                  style={{ padding: '5px 8px', fontSize: 13 }}
+                                  value={g.scientific_supervisor || ''}
+                                  onChange={e => handleGroupUpdate(g, 'scientific_supervisor', e.target.value)}
+                                >
+                                  <option value="">--- مشرف علمي ---</option>
+                                  {scientificSupervisorsList.map(s => (
+                                    <option key={s.id} value={s.name}>
+                                      {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div style={{ textAlign: 'center' }}>{g.scientific_supervisor || 'غير مسكن بعد'}</div>
+                              )}
+                            </td>
+                            <td style={{ minWidth: 185 }}>
+                              {isAdminOrSupervisor ? (
+                                <select
+                                  className="form-select"
+                                  style={{ padding: '5px 8px', fontSize: 13 }}
+                                  value={g.technical_supervisor || ''}
+                                  onChange={e => handleGroupUpdate(g, 'technical_supervisor', e.target.value)}
+                                >
+                                  <option value="">--- مشرف تقني ---</option>
+                                  {technicalSupervisorsList.map(s => (
+                                    <option key={s.id} value={s.name}>
+                                      {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div style={{ textAlign: 'center' }}>{g.technical_supervisor || 'غير مسكن بعد'}</div>
+                              )}
                             </td>
                             <td style={{ minWidth: 200 }}>
                               {isAdminOrSupervisor ? (

@@ -205,6 +205,8 @@ function PlatformSessionsList() {
     const examLink = myApplicant?.teams_link || myPlacementGroup?.teams_link || '';
     const examMohfez = myApplicant?.mohfez || myPlacementGroup?.mohfez || '-';
     const examCoord = myApplicant?.coordinator || myPlacementGroup?.coordinator || '-';
+    const examSciSupervisor = myApplicant?.scientific_supervisor || myPlacementGroup?.scientific_supervisor || '-';
+    const examTechSupervisor = myApplicant?.technical_supervisor || myPlacementGroup?.technical_supervisor || '-';
     const examShift = myPlacementGroup?.shift_label || (myApplicant?.exam_time ? formatTime12Ar(myApplicant.exam_time) : '-');
 
     const reportBoxStyle = {
@@ -356,6 +358,21 @@ function PlatformSessionsList() {
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {examMohfez && examMohfez !== '-' ? `الشيخ / ${examMohfez}` : 'سيتم تحديده قريباً'}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                      المشرف العلمي
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+                      {examSciSupervisor && examSciSupervisor !== '-' ? examSciSupervisor : 'سيتم تحديده قريباً'}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                      المشرف التقني
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+                      {examTechSupervisor && examTechSupervisor !== '-' ? examTechSupervisor : 'سيتم تحديده قريباً'}
                     </td>
                   </tr>
 
