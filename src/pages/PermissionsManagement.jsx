@@ -255,7 +255,7 @@ function PermissionsManagement() {
         </div>
 
         {/* Matrix Table */}
-        <div className="table-wrapper box-card" style={{ padding: '0', overflow: 'hidden' }}>
+        <div className="table-wrapper box-card" style={{ padding: '0', overflow: 'auto' }}>
           <table className="management-table">
             <thead>
               <tr>

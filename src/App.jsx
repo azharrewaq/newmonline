@@ -79,9 +79,9 @@ function DashboardLayout() {
     <div className="app-layout">
       <Sidebar isOpen={isSidebarOpen} toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
       
-      <main className="main-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <main className="main-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <Header toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
-        <div className="content-scroll-area" style={{ overflowY: 'auto', flex: 1, padding: '20px' }}>
+        <div className="content-scroll-area" style={{ overflow: 'auto', flex: 1, padding: '20px', minWidth: 0 }}>
           <Routes>
             <Route path="/" element={<Navigate to={isStudentUser ? '/platform-sessions' : '/platform-dashboard'} replace />} />
             <Route path="/platform-dashboard" element={isStudentUser ? <Navigate to="/platform-sessions" replace /> : <PlatformDashboard />} />

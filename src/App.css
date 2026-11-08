@@ -1,8 +1,13 @@
 /* App specific overrides if any */
 .main-content {
   background-color: var(--bg-main);
+  min-width: 0;
 }
 
 .content-scroll-area {
+  overflow-x: auto;
+  overflow-y: auto;
   padding-bottom: 50px;
+  min-width: 0;
+  -webkit-overflow-scrolling: touch;
 }

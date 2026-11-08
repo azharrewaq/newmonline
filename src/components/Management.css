@@ -106,12 +106,38 @@
 .table-wrapper {
   padding: 0;
   overflow-x: auto;
+  overflow-y: auto;
+  max-width: 100%;
   border-radius: 12px;
-  overflow: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-gold) var(--bg-card);
+  position: relative;
+}
+
+.table-wrapper::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: var(--bg-card);
+  border-radius: 5px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: var(--accent-gold);
+  border-radius: 5px;
+  border: 2px solid var(--bg-card);
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-gold-dark, #b8860b);
 }
 
 .management-table {
   width: 100%;
+  min-width: max-content;
   border-collapse: collapse;
 }
 
@@ -119,11 +145,12 @@
   background: linear-gradient(180deg, var(--accent-gold) 0%, var(--accent-gold-dark) 100%);
   color: #000000;
   text-align: center;
-  padding: 16px 20px;
+  padding: 14px 18px;
   font-size: 14px;
   font-weight: 700;
   border-bottom: 2px solid rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
+  white-space: nowrap;
 }
 
 .management-table th:first-child {
@@ -135,11 +162,12 @@
 }
 
 .management-table td {
-  padding: 15px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
   font-size: 14px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .management-table tbody tr {
