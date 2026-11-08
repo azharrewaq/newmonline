@@ -8,7 +8,7 @@ import { filterSessionsForUser } from '../utils/userScopeHelper';
 import { countriesList } from '../data/countries';
 import { getJoinState, useNow, formatReportText, toLocalDateStr } from '../utils/sessionHelpers';
 import { getSubstitutionFor } from '../utils/userScopeHelper';
-import { getApplicantExamJoinState, formatTime12Ar, normalizeExamDate, getGroupTimeLabel } from '../utils/placementHelpers';
+import { getApplicantExamJoinState, formatTime12Ar, normalizeExamDate, formatExamDateAr, getGroupTimeLabel } from '../utils/placementHelpers';
 import SubstituteModal from '../components/SubstituteModal';
 
 function PlatformSessionsList() {
@@ -321,7 +321,7 @@ function PlatformSessionsList() {
                         fontSize: 17,
                         fontWeight: '800'
                       }}>
-                        {normalizeExamDate(myApplicant.exam_date) || 'سيتم تحديده قريباً'}
+                        {formatExamDateAr(myApplicant.exam_date) || 'سيتم تحديده قريباً'}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
@@ -470,7 +470,7 @@ function PlatformSessionsList() {
                   fontSize: 15,
                   fontWeight: '800'
                 }}>
-                  يُفعَّل الرابط يوم {myApplicant.exam_date || 'الاختبار'} قبل الموعد بـ 15 دقيقة
+                  يُفعَّل الرابط يوم {formatExamDateAr(myApplicant.exam_date) || 'الاختبار'} قبل الموعد بـ 15 دقيقة
                 </div>
               )}
             </div>

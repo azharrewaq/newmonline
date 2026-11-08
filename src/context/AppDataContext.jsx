@@ -11,7 +11,7 @@ import {
 } from '../utils/apiService';
 import { setActiveSubstitutions } from '../utils/userScopeHelper';
 import { findStudentRecord, getStudentsOfSession, toLocalDateStr } from '../utils/sessionHelpers';
-import { createDefaultPlacementGroups } from '../utils/placementHelpers';
+import { createDefaultPlacementGroups, normalizeExamDate, normalizeExamTime } from '../utils/placementHelpers';
 
 const AppDataContext = createContext(null);
 
@@ -344,7 +344,14 @@ export function AppDataProvider({ children }) {
   const [platformMohfezs, setPlatformMohfezs] = useState(() => getFromLocalStorage('platformMohfezs', []));
   const [platformSessions, setPlatformSessions] = useState(() => getFromLocalStorage('platformSessions', []));
   const [platformStudents, setPlatformStudents] = useState(() => getFromLocalStorage('platformStudents', []));
-  const [platformApplicants, setPlatformApplicants] = useState(() => getFromLocalStorage('platformApplicants', []));
+  const [platformApplicants, setPlatformApplicants] = useState(() => {
+    const stored = getFromLocalStorage('platformApplicants', []);
+    return (Array.isArray(stored) ? stored : []).map(a => ({
+      ...a,
+      exam_date: a.exam_date ? normalizeExamDate(a.exam_date) : '',
+      exam_time: a.exam_time ? normalizeExamTime(a.exam_time) : ''
+    }));
+  });
   const [placementGroups, setPlacementGroups] = useState(() => {
     const stored = getFromLocalStorage('placementGroups', []);
     return Array.isArray(stored) && stored.length === 40 ? stored : createDefaultPlacementGroups();
@@ -566,7 +573,11 @@ export function AppDataProvider({ children }) {
         await syncCollection(platformMohfezsAPI, platformMohfezs, setPlatformMohfezs, 'platformMohfezs');
         await syncCollection(platformSessionsAPI, platformSessions, setPlatformSessions, 'platformSessions');
         await syncCollection(platformStudentsAPI, platformStudents, setPlatformStudents, 'platformStudents');
-        await syncCollection(platformApplicantsAPI, platformApplicants, setPlatformApplicants, 'platformApplicants');
+        await syncCollection(platformApplicantsAPI, platformApplicants, setPlatformApplicants, 'platformApplicants', a => ({
+          ...a,
+          exam_date: a.exam_date ? normalizeExamDate(a.exam_date) : '',
+          exam_time: a.exam_time ? normalizeExamTime(a.exam_time) : ''
+        }));
         // مزامنة الـ 40 مجموعة لتحديد المستوى (20 مجموعة 6-8 م + 20 مجموعة 8-10 م)
         const remotePG = await placementGroupsAPI.getAll().catch(() => null);
         if (remotePG) {
@@ -790,10 +801,11 @@ export function AppDataProvider({ children }) {
           console.error('[Sync] Error during database correction:', correctErr);
         }
 
-        setDbSynced(true);
         console.log('✓ Database synchronization complete!');
       } catch (error) {
         console.error('✗ Backend sync error:', error);
+      } finally {
+        setDbSynced(true);
       }
     };
 
@@ -1800,7 +1812,12 @@ export function AppDataProvider({ children }) {
       if (Array.isArray(remoteApps)) {
         const deletedSet = deletedApplicantIdsRef.current;
         const normApps = remoteApps
-          .map(item => ({ ...item, id: item.id || item._id }))
+          .map(item => ({
+            ...item,
+            id: item.id || item._id,
+            exam_date: item.exam_date ? normalizeExamDate(item.exam_date) : '',
+            exam_time: item.exam_time ? normalizeExamTime(item.exam_time) : ''
+          }))
           .filter(item => {
             if (deletedSet.has(String(item.id))) return false;
             if (item._id && deletedSet.has(String(item._id))) return false;
@@ -2142,7 +2159,12 @@ export function AppDataProvider({ children }) {
   };
 
   const addPlatformApplicant = (item) => {
-    const newItem = { ...item, id: String(Date.now()) };
+    const newItem = {
+      ...item,
+      id: String(Date.now()),
+      exam_date: item.exam_date ? normalizeExamDate(item.exam_date) : '',
+      exam_time: item.exam_time ? normalizeExamTime(item.exam_time) : ''
+    };
     const nid = String(newItem.national_id || newItem.passport_no || '').trim();
     if (nid) deletedApplicantIdsRef.current.delete(nid);
     deletedApplicantIdsRef.current.delete(String(newItem.id));
@@ -2168,15 +2190,22 @@ export function AppDataProvider({ children }) {
       });
   };
   const updatePlatformApplicant = (id, updatedItem) => {
+    const sanitizedItem = { ...updatedItem };
+    if ('exam_date' in sanitizedItem && sanitizedItem.exam_date) {
+      sanitizedItem.exam_date = normalizeExamDate(sanitizedItem.exam_date);
+    }
+    if ('exam_time' in sanitizedItem && sanitizedItem.exam_time) {
+      sanitizedItem.exam_time = normalizeExamTime(sanitizedItem.exam_time);
+    }
     const target = platformApplicants.find(m => String(m.id) === String(id) || String(m._id) === String(id));
     const remoteId = target?._id || id;
     setPlatformApplicants(prev => {
-      const next = prev.map(m => (String(m.id) === String(id) || String(m._id) === String(id)) ? { ...m, ...updatedItem } : m);
+      const next = prev.map(m => (String(m.id) === String(id) || String(m._id) === String(id)) ? { ...m, ...sanitizedItem } : m);
       saveToLocalStorage('platformApplicants', next);
       return next;
     });
     pendingApplicantOpsRef.current += 1;
-    platformApplicantsAPI.update(remoteId, updatedItem)
+    platformApplicantsAPI.update(remoteId, sanitizedItem)
       .catch(err => console.error(err))
       .finally(() => {
         pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
@@ -2221,7 +2250,9 @@ export function AppDataProvider({ children }) {
   const bulkImportPlatformApplicants = async (applicantList, userList = []) => {
     const newApplicants = applicantList.map(a => ({
       ...a,
-      id: a.id || String(Date.now() + Math.random())
+      id: a.id || String(Date.now() + Math.random()),
+      exam_date: a.exam_date ? normalizeExamDate(a.exam_date) : '',
+      exam_time: a.exam_time ? normalizeExamTime(a.exam_time) : ''
     }));
 
     newApplicants.forEach(a => {
@@ -2712,6 +2743,7 @@ export function AppDataProvider({ children }) {
       shariaDailyReports, addShariaDailyReport, updateShariaDailyReport, deleteShariaDailyReport,
 
       theme, toggleTheme,
+      dbSynced,
       rolePermissions, updateRolePermissions, hasPermission,
     }}>
       {children}

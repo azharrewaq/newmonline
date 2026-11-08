@@ -16,7 +16,7 @@ const getApiBaseUrl = () => {
 const API_BASE_URL = getApiBaseUrl();
 
 // Helper function for API calls
-const apiCall = async (endpoint, options = {}) => {
+export const apiCall = async (endpoint, options = {}) => {
   const {
     method = 'GET',
     body = null,

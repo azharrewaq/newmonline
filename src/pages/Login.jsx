@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAppData } from '../context/AppDataContext';
+import { usersAPI, apiCall } from '../utils/apiService';
 import './Auth.css';
 
 // الأدوار التي تنتمي إلى نظام شئون الأروقة
@@ -17,10 +18,12 @@ const PLATFORM_ROLES = [
 ];
 
 function getHomePageForRole(role) {
-  if (!role) return '/dashboard';
+  if (!role) return '/platform-dashboard';
+  if (role === 'student') return '/platform-sessions';
+  if (role === 'sharia_student') return '/sharia-dashboard';
   if (ROWAQ_ROLES.includes(role)) return '/dashboard';
   if (PLATFORM_ROLES.includes(role)) return '/platform-dashboard';
-  return '/dashboard';
+  return '/platform-dashboard';
 }
 
 function Login() {
@@ -335,36 +338,126 @@ function Login() {
       }
     }
 
-    // ===== 3) تسجيل الدخول أو إظهار خطأ =====
-    setTimeout(() => {
-      if (foundUser) {
-        const userToSave = { ...foundUser, id: foundUser.id || Date.now() };
-        sessionStorage.setItem('currentUser', JSON.stringify(userToSave));
-        setLoading(false);
-        navigate('/platform-dashboard');
-      } else {
-        // عرض معلومات تشخيصية مفصلة
-        console.log('❌ لم يتم العثور على المستخدم في أي مصدر بيانات');
-        console.log('المدخل:', inputUser, '/', inputPass);
-        console.log('عدد المستخدمين:', users.length);
-        console.log('عدد المنسقين:', coordinators.length);
-        console.log('عدد المحفظين:', mohfezs.length);
-        console.log('عدد المدراء:', managers.length);
-        
-        // عرض المنسقين للمقارنة
-        coordinators.forEach((c, i) => {
-          console.log(`منسق[${i}]:`, {
-            national_id: c.national_id,
-            registry_no: c.registry_no,
-            match_nid: String(c.national_id || '').trim() === inputUser,
-            match_pw: String(c.registry_no || '').trim() === inputPass
-          });
-        });
-
-        setError('اسم المستخدم أو كلمة المرور غير صحيحة');
-        setLoading(false);
+    // ===== 3) إذا لم يتم العثور عليه في الذاكرة المحلية (خاصة في المتصفحات الجديدة قبل اكتمال المزامنة)، نستعلم مباشرة من الخادم (MongoDB) =====
+    if (!foundUser) {
+      try {
+        // أ) البحث المباشر في مجموعة المستخدمين بالخادم
+        const remoteUser = await usersAPI.getByUsername(encodeURIComponent(inputUser)).catch(() => null);
+        if (remoteUser && (remoteUser.username || remoteUser.national_id || remoteUser.email)) {
+          const pws = [remoteUser.password, remoteUser.record_number, remoteUser.registry_no].map(v => String(v || '').trim());
+          if (pws.some(pw => pw && pw === inputPass)) {
+            foundUser = remoteUser;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching remote user:', err);
       }
-    }, 500);
+    }
+
+    if (!foundUser) {
+      try {
+        // ب) البحث في المتقدمين الجدد بالخادم مباشرة
+        const remoteApp = await apiCall(`/platformapplicants/${encodeURIComponent(inputUser)}`).catch(() => null);
+        if (remoteApp && (remoteApp.national_id || remoteApp.passport_no)) {
+          const nid = String(remoteApp.national_id || remoteApp.passport_no || '').trim();
+          if (nid === inputPass) {
+            foundUser = {
+              name: remoteApp.name,
+              email: nid,
+              username: nid,
+              national_id: nid,
+              password: nid,
+              record_number: nid,
+              phone: remoteApp.phone || '',
+              role: 'student',
+            };
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching remote applicant:', err);
+      }
+    }
+
+    if (!foundUser) {
+      try {
+        // ج) البحث في دارسي المنصة بالخادم مباشرة
+        const remoteStudent = await apiCall(`/platformstudents/${encodeURIComponent(inputUser)}`).catch(() => null);
+        if (remoteStudent && (remoteStudent.passport_no || remoteStudent.national_id)) {
+          const passport = String(remoteStudent.passport_no || remoteStudent.national_id || '').trim();
+          if (passport === inputPass) {
+            foundUser = {
+              name: remoteStudent.name,
+              email: passport,
+              username: passport,
+              national_id: passport,
+              password: passport,
+              record_number: passport,
+              phone: remoteStudent.phone || '',
+              role: 'student',
+              userSession: remoteStudent.session_id || remoteStudent.session_no || ''
+            };
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching remote student:', err);
+      }
+    }
+
+    if (!foundUser) {
+      try {
+        // د) البحث في منسقي ومحفظي ومشرفي المنصة والأروقة بالخادم
+        const [remotePC, remotePM, remoteCoord, remoteMoh] = await Promise.all([
+          apiCall(`/platformcoordinators/${encodeURIComponent(inputUser)}`).catch(() => null),
+          apiCall(`/platformmohfezs/${encodeURIComponent(inputUser)}`).catch(() => null),
+          apiCall(`/coordinators/${encodeURIComponent(inputUser)}`).catch(() => null),
+          apiCall(`/mohfezs/${encodeURIComponent(inputUser)}`).catch(() => null),
+        ]);
+
+        if (remotePC && String(remotePC.registry_no || '').trim() === inputPass) {
+          foundUser = {
+            name: remotePC.name, email: inputUser, username: inputUser, national_id: inputUser,
+            password: inputPass, record_number: inputPass, phone: remotePC.phone || '',
+            role: 'platform_coordinator'
+          };
+        } else if (remotePM && String(remotePM.registry_no || '').trim() === inputPass) {
+          foundUser = {
+            name: remotePM.name, email: inputUser, username: inputUser, national_id: inputUser,
+            password: inputPass, record_number: inputPass, phone: remotePM.phone || '',
+            role: 'platform_mohfez'
+          };
+        } else if (remoteCoord && String(remoteCoord.registry_no || '').trim() === inputPass) {
+          const role = remoteCoord.specialization === 'إداري' ? 'branch_admin_coordinator' : 'branch_scientific_coordinator';
+          foundUser = {
+            name: remoteCoord.name, email: inputUser, username: inputUser, national_id: inputUser,
+            password: inputPass, record_number: inputPass, phone: remoteCoord.phone || '',
+            role, userAdmin: remoteCoord.admin || '', userCenter: remoteCoord.center || '', userBranch: remoteCoord.branch || ''
+          };
+        } else if (remoteMoh && String(remoteMoh.registry_no || '').trim() === inputPass) {
+          foundUser = {
+            name: remoteMoh.name, email: inputUser, username: inputUser, national_id: inputUser,
+            password: inputPass, record_number: inputPass, phone: remoteMoh.phone || '',
+            role: 'mohfez', userAdmin: remoteMoh.admin || '', userCenter: remoteMoh.center || '', userBranch: remoteMoh.branch || ''
+          };
+        }
+      } catch (err) {
+        console.error('Error fetching remote staff:', err);
+      }
+    }
+
+    if (foundUser) {
+      try {
+        addUser(foundUser);
+      } catch (e) {}
+      const userToSave = { ...foundUser, id: foundUser.id || Date.now() };
+      sessionStorage.setItem('currentUser', JSON.stringify(userToSave));
+      setLoading(false);
+      navigate(getHomePageForRole(userToSave.role));
+    } else {
+      console.log('❌ لم يتم العثور على المستخدم في أي مصدر بيانات (محلي أو سحابي)');
+      console.log('المدخل:', inputUser, '/', inputPass);
+      setError('اسم المستخدم أو كلمة المرور غير صحيحة');
+      setLoading(false);
+    }
   };
 
   return (

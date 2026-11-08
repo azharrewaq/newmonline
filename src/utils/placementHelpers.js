@@ -5,7 +5,7 @@
  * - 20 مجموعة في الفترة الثانية: من 8 إلى 10 مساءً (20:00 - 22:00)
  */
 import { normalizeArabic } from './userScopeHelper';
-import { toLocalDateStr } from './sessionHelpers';
+import { toLocalDateStr, getArabicDayName } from './sessionHelpers';
 import egyptCenters from '../data/egyptCenters';
 
 export const PLACEMENT_GROUP_CAPACITY = 25;
@@ -149,10 +149,12 @@ export const isLegacyDefaultGroupShift = (g) => {
 };
 
 /**
- * تحويل الأرقام العربية (٠-٩) إلى أرقام غربية (0-9)
+ * تحويل الأرقام العربية (٠-٩) والفارسية إلى أرقام غربية (0-9)
  */
 const toWesternDigits = (str) =>
-  String(str ?? '').replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  String(str ?? '')
+    .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 
 /**
  * توحيد صيغة تاريخ الاختبار إلى YYYY-MM-DD
@@ -173,10 +175,10 @@ export const normalizeExamDate = (val) => {
   if (!s) return '';
 
   // 1. رقم تسلسلي من Excel (مثل 46335 أو 46335.0)
-  if (/^\d{5}(\.\d+)?$/.test(s)) {
+  if (/^\d{4,5}(\.\d+)?$/.test(s)) {
     const serial = Math.floor(Number(s));
-    if (serial >= 30000 && serial <= 80000) {
-      const utcMs = (serial - 25569) * 86400 * 1000;
+    if (serial >= 20000 && serial <= 90000) {
+      const utcMs = Math.round((serial - 25569) * 86400 * 1000);
       const d = new Date(utcMs);
       if (!isNaN(d.getTime())) {
         const y = d.getUTCFullYear();
@@ -209,6 +211,16 @@ export const normalizeExamDate = (val) => {
   }
 
   return s.replace(/\//g, '-');
+};
+
+/**
+ * تنسيق تاريخ الاختبار للعرض باللغة العربية مع اسم اليوم (مثل: الاثنين 2026-11-09)
+ */
+export const formatExamDateAr = (val) => {
+  const norm = normalizeExamDate(val);
+  if (!norm) return '';
+  const dayName = getArabicDayName(norm);
+  return dayName ? `${dayName} ${norm}` : norm;
 };
 
 /**
@@ -264,8 +276,9 @@ export const getApplicantExamJoinState = (applicant, group = null, now = new Dat
 
   const today = toLocalDateStr(now);
   if (examDate !== today) {
+    const formattedDate = formatExamDateAr(examDate) || examDate;
     if (examDate > today) {
-      return { visible: false, open: false, reason: `موعد اختبارك يوم ${examDate} (يظهر الرابط في يوم الاختبار قبل الموعد بـ 15 دقيقة)` };
+      return { visible: false, open: false, reason: `موعد اختبارك يوم ${formattedDate} (يظهر الرابط في يوم الاختبار قبل الموعد بـ 15 دقيقة)` };
     }
     return { visible: false, open: false, reason: 'انتهى يوم الاختبار الخاص بك' };
   }
