@@ -2108,7 +2108,7 @@ export function AppDataProvider({ children }) {
 
   const addPlatformStudent = (item) => {
     const newItem = { ...item, id: String(Date.now()) };
-    setPlatformStudents(prev => [...prev, newItem]);
+    setPlatformStudents(prev => [newItem, ...prev]);
     platformStudentsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformStudent = (id, updatedItem) => {
@@ -2178,7 +2178,7 @@ export function AppDataProvider({ children }) {
     if (nid) deletedApplicantIdsRef.current.delete(nid);
     deletedApplicantIdsRef.current.delete(String(newItem.id));
     setPlatformApplicants(prev => {
-      const next = [...prev, newItem];
+      const next = [newItem, ...prev];
       saveToLocalStorage('platformApplicants', next);
       return next;
     });

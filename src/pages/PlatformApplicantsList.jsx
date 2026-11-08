@@ -189,9 +189,10 @@ function PlatformApplicantsList() {
       }
 
       if (filterName) {
-        const q = filterName.trim();
-        const matchName = (a.name || '').includes(q);
-        const matchNid = String(a.national_id || a.passport_no || '').includes(q);
+        const qNorm = normalizeArabic(filterName);
+        const qRaw = filterName.trim();
+        const matchName = normalizeArabic(a.name || '').includes(qNorm);
+        const matchNid = String(a.national_id || a.passport_no || '').includes(qRaw);
         if (!matchName && !matchNid) return false;
       }
 
@@ -228,11 +229,24 @@ function PlatformApplicantsList() {
     filterCoordinator, placementGroups, filterShift, filterExamDate, filterDays, filterTime
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  // ترتيب النتائج: المضافون يدوياً وحديثاً يظهرون في الصدارة فوراً على الصفحة الأولى
+  const sortedFiltered = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const aTime = Number(a.id) > 1700000000000 ? Number(a.id) : 0;
+      const bTime = Number(b.id) > 1700000000000 ? Number(b.id) : 0;
+      if (aTime !== bTime) return bTime - aTime; // الأحدث إضافة أولاً
+      const ga = Number(a.group_no) || 999;
+      const gb = Number(b.group_no) || 999;
+      if (ga !== gb) return ga - gb;
+      return (a.name || '').localeCompare(b.name || '', 'ar');
+    });
+  }, [filtered]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / pageSize));
   const paginated = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage]);
+    return sortedFiltered.slice(start, start + pageSize);
+  }, [sortedFiltered, currentPage]);
 
   // تحديث حقل للمتقدم مباشرة من الجدول (القوائم المنسدلة المترابطة)
   const handleInlineUpdate = (applicant, field, value) => {

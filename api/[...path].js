@@ -241,6 +241,26 @@ export default async function handler(req, res) {
       return res.status(200).json(docs);
     }
 
+    // ── GET /api/:collection/diagnose ─────────────────────────────────────────
+    if (req.method === 'GET' && segment2 === 'diagnose') {
+      const t0 = Date.now();
+      const count = await col.countDocuments({});
+      const t1 = Date.now();
+      const sample = await col.find({}).limit(5).toArray();
+      const t2 = Date.now();
+      const allDocs = await col.find({}).toArray();
+      const t3 = Date.now();
+      const jsonLen = JSON.stringify(allDocs).length;
+      return res.status(200).json({
+        collection: collectionName,
+        count,
+        countTimeMs: t1 - t0,
+        sampleTimeMs: t2 - t1,
+        allDocsTimeMs: t3 - t2,
+        uncompressedSizeMB: (jsonLen / (1024 * 1024)).toFixed(2)
+      });
+    }
+
     // ── GET /api/:collection ───────────────────────────────────────────────────
     if (req.method === 'GET' && !segment2) {
       const docs = await col.find({}).toArray();

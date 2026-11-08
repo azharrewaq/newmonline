@@ -4,7 +4,7 @@ import { Search, Plus, Download, Upload, Edit, Trash2 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
 import { exportToXLSX, importFromXLSX } from '../utils/xlsxHelper';
-import { filterStudentsForUser, filterSessionsForUser } from '../utils/userScopeHelper';
+import { filterStudentsForUser, filterSessionsForUser, normalizeArabic } from '../utils/userScopeHelper';
 import { countriesList } from '../data/countries';
 
 function PlatformStudentsList() {
@@ -84,8 +84,8 @@ function PlatformStudentsList() {
 
   const filtered = scopedStudents.filter(s => {
     return (
-      (filterName ? s.name?.includes(filterName) : true) &&
-      (filterPassportNo ? (s.passport_no || s.national_id)?.includes(filterPassportNo) : true) &&
+      (filterName ? normalizeArabic(s.name || '').includes(normalizeArabic(filterName)) : true) &&
+      (filterPassportNo ? String(s.passport_no || s.national_id || '').includes(filterPassportNo.trim()) : true) &&
       (filterCountry ? s.country === filterCountry : true) &&
       (filterRowaq ? s.rowaq === filterRowaq : true) &&
       (filterSession ? String(s.session_id) === String(filterSession) || String(s.session_no) === String(filterSession) : true)
