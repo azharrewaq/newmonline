@@ -14,6 +14,8 @@ import {
   PREFERRED_DAYS_OPTIONS,
   PREFERRED_TIME_OPTIONS,
   EXAM_TIME_OPTIONS,
+  normalizeExamDate,
+  normalizeExamTime,
 } from '../utils/placementHelpers';
 
 function PlatformApplicantsCreate() {
@@ -126,8 +128,8 @@ function PlatformApplicantsCreate() {
           technical_supervisor: a.technical_supervisor || '',
           mohfez: a.mohfez || '',
           coordinator: a.coordinator || '',
-          exam_date: a.exam_date || '',
-          exam_time: a.exam_time || '',
+          exam_date: normalizeExamDate(a.exam_date || ''),
+          exam_time: normalizeExamTime(a.exam_time || ''),
           teams_link: a.teams_link || '',
           status: a.status || 'في انتظار الاختبار',
         });

@@ -148,9 +148,95 @@ export const createDefaultPlacementGroups = () => {
   });
 };
 
+/**
+ * تحويل الأرقام العربية (٠-٩) إلى أرقام غربية (0-9)
+ */
+const toWesternDigits = (str) =>
+  String(str ?? '').replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+
+/**
+ * توحيد صيغة تاريخ الاختبار إلى YYYY-MM-DD
+ * يدعم:
+ * - أرقام التاريخ التسلسلية من Excel (مثل 46335 -> 2026-11-09)
+ * - صيغة YYYY-MM-DD أو YYYY/MM/DD
+ * - صيغة DD-MM-YYYY أو DD/MM/YYYY
+ */
+export const normalizeExamDate = (val) => {
+  if (val === null || val === undefined || val === '') return '';
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = toWesternDigits(val).trim();
+  if (!s) return '';
+
+  // 1. رقم تسلسلي من Excel (مثل 46335 أو 46335.0)
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = Math.floor(Number(s));
+    if (serial >= 30000 && serial <= 80000) {
+      const utcMs = (serial - 25569) * 86400 * 1000;
+      const d = new Date(utcMs);
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+    }
+  }
+
+  // 2. صيغة YYYY-M-D أو YYYY/M/D
+  const ymd = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (ymd) {
+    const y = ymd[1];
+    const m = String(ymd[2]).padStart(2, '0');
+    const d = String(ymd[3]).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // 3. صيغة D-M-YYYY أو D/M/YYYY
+  const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmy) {
+    const n1 = parseInt(dmy[1], 10);
+    const n2 = parseInt(dmy[2], 10);
+    const y = dmy[3];
+    // في النظام العربي اليوم أولاً (DD/MM/YYYY)، إلا إذا كان الرقم الثاني أكبر من 12
+    const day = n2 > 12 && n1 <= 12 ? n2 : n1;
+    const month = n2 > 12 && n1 <= 12 ? n1 : n2;
+    return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  return s.replace(/\//g, '-');
+};
+
+/**
+ * توحيد صيغة توقيت الاختبار إلى HH:MM (يدعم كسور الوقت العشرية من Excel مثل 0.75 -> 18:00)
+ */
+export const normalizeExamTime = (val) => {
+  if (val === null || val === undefined || val === '') return '';
+  const s = toWesternDigits(val).trim();
+  if (!s) return '';
+
+  // كسر عشري من Excel (مثل 0.75 = 18:00 أو 46335.75)
+  if (/^\d*\.\d+$/.test(s)) {
+    const num = Number(s);
+    const frac = num >= 1 ? num - Math.floor(num) : num;
+    if (frac > 0 && frac < 1) {
+      const totalMins = Math.round(frac * 24 * 60);
+      const h = Math.floor(totalMins / 60) % 24;
+      const m = totalMins % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+  }
+
+  return s.replace('.', ':');
+};
+
 const parseMinutes = (timeStr) => {
   if (!timeStr) return null;
-  const clean = String(timeStr).trim();
+  const clean = normalizeExamTime(timeStr);
   const m = clean.match(/^(\d{1,2})[:.](\d{2})/);
   if (!m) return null;
   let h = parseInt(m[1], 10);
@@ -171,7 +257,7 @@ const parseMinutes = (timeStr) => {
 export const getApplicantExamJoinState = (applicant, group = null, now = new Date()) => {
   if (!applicant) return { visible: false, open: false, reason: 'لا توجد بيانات متقدم' };
 
-  const examDate = String(applicant.exam_date || '').replace(/\//g, '-').trim();
+  const examDate = normalizeExamDate(applicant.exam_date);
   if (!examDate) {
     return { visible: false, open: false, reason: 'لم يتم تحديد يوم الاختبار بعد' };
   }
@@ -184,7 +270,7 @@ export const getApplicantExamJoinState = (applicant, group = null, now = new Dat
     return { visible: false, open: false, reason: 'انتهى يوم الاختبار الخاص بك' };
   }
 
-  const examTimeStr = applicant.exam_time || group?.time_start || '18:00';
+  const examTimeStr = normalizeExamTime(applicant.exam_time) || group?.time_start || '18:00';
   const examMinutes = parseMinutes(examTimeStr);
   if (examMinutes === null) {
     return { visible: true, open: true, reason: '' };
@@ -253,7 +339,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
       technicalSupervisor: grp?.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
       coordinator: targetCoordinator || grp?.coordinator || groupApplicants[0]?.coordinator || '',
       mohfez: grp?.mohfez || groupApplicants[0]?.mohfez || '',
-      examDate: targetDate || groupApplicants[0]?.exam_date || '',
+      examDate: normalizeExamDate(targetDate || groupApplicants[0]?.exam_date || ''),
       rows: groupApplicants,
       padCount: groupApplicants.length === 0 || padToCapacity ? PLACEMENT_GROUP_CAPACITY : groupApplicants.length,
     }];
@@ -269,7 +355,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
       const techSup = (a.technical_supervisor || grp?.technical_supervisor || '').trim();
       const coord = (a.coordinator || grp?.coordinator || targetCoordinator || '').trim();
       const mohfez = (a.mohfez || grp?.mohfez || '').trim();
-      const examDate = (a.exam_date || targetDate || '').trim();
+      const examDate = normalizeExamDate(a.exam_date || targetDate || '');
       const key = `${gNo}||${coord}`;
       if (!map.has(key)) {
         map.set(key, {

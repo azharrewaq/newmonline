@@ -21,6 +21,8 @@ import {
   PREFERRED_TIME_OPTIONS,
   PLACEMENT_GROUP_CAPACITY,
   formatTime12Ar,
+  normalizeExamDate,
+  normalizeExamTime,
   buildExamSheetsByGroupAndCoordinator,
   printPlacementExamSheets,
 } from '../utils/placementHelpers';
@@ -177,7 +179,7 @@ function PlatformApplicantsList() {
       }
       if (filterShift === '6_8' && !(Number(a.group_no) >= 1 && Number(a.group_no) <= 20)) return false;
       if (filterShift === '8_10' && !(Number(a.group_no) >= 21 && Number(a.group_no) <= 40)) return false;
-      if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+      if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
       if (filterDays && normalizePreferredDays(a.preferred_days || '') !== filterDays) return false;
       if (filterTime && (a.preferred_time || '') !== filterTime) return false;
 
@@ -266,7 +268,7 @@ function PlatformApplicantsList() {
   const handlePrintGroupSheet = (group) => {
     const groupApplicants = platformApplicants.filter(a => {
       if (Number(a.group_no) !== Number(group.group_no)) return false;
-      if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+      if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
       return true;
     });
     const sheets = buildExamSheetsByGroupAndCoordinator(groupApplicants, placementGroups, {
@@ -283,7 +285,7 @@ function PlatformApplicantsList() {
     const allSheets = placementGroups.map(group => {
       const groupApplicants = platformApplicants.filter(a => {
         if (Number(a.group_no) !== Number(group.group_no)) return false;
-        if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+        if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
         return true;
       });
       return {
@@ -293,7 +295,7 @@ function PlatformApplicantsList() {
         technicalSupervisor: group.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
         coordinator: group.coordinator || groupApplicants[0]?.coordinator || '',
         mohfez: group.mohfez || groupApplicants[0]?.mohfez || '',
-        examDate: filterExamDate || groupApplicants[0]?.exam_date || '',
+        examDate: normalizeExamDate(filterExamDate || groupApplicants[0]?.exam_date || ''),
         rows: groupApplicants,
         padCount: PLACEMENT_GROUP_CAPACITY,
       };
@@ -315,7 +317,7 @@ function PlatformApplicantsList() {
   const handleExportGroupSheetExcel = (group) => {
     const groupApplicants = platformApplicants.filter(a => {
       if (Number(a.group_no) !== Number(group.group_no)) return false;
-      if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+      if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
       return true;
     });
     const sheets = buildExamSheetsByGroupAndCoordinator(groupApplicants, placementGroups, {
@@ -332,7 +334,7 @@ function PlatformApplicantsList() {
     const allSheets = placementGroups.map(group => {
       const groupApplicants = platformApplicants.filter(a => {
         if (Number(a.group_no) !== Number(group.group_no)) return false;
-        if (filterExamDate && String(a.exam_date || '').replace(/\//g, '-') !== filterExamDate) return false;
+        if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
         return true;
       });
       return {
@@ -342,7 +344,7 @@ function PlatformApplicantsList() {
         technicalSupervisor: group.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
         coordinator: group.coordinator || groupApplicants[0]?.coordinator || '',
         mohfez: group.mohfez || groupApplicants[0]?.mohfez || '',
-        examDate: filterExamDate || groupApplicants[0]?.exam_date || '',
+        examDate: normalizeExamDate(filterExamDate || groupApplicants[0]?.exam_date || ''),
         rows: groupApplicants,
         padCount: PLACEMENT_GROUP_CAPACITY,
       };
@@ -373,8 +375,8 @@ function PlatformApplicantsList() {
         'المشرف التقني': a.technical_supervisor || grp?.technical_supervisor || '',
         'المحفظ': a.mohfez || grp?.mohfez || '',
         'المنسق': a.coordinator || grp?.coordinator || '',
-        'تاريخ الاختبار': a.exam_date || '',
-        'توقيت الاختبار': a.exam_time || grp?.time_start || '',
+        'تاريخ الاختبار': normalizeExamDate(a.exam_date) || '',
+        'توقيت الاختبار': normalizeExamTime(a.exam_time) || grp?.time_start || '',
         'رابط تيمز': a.teams_link || grp?.teams_link || '',
       };
     });
@@ -466,8 +468,8 @@ function PlatformApplicantsList() {
         const technicalSupervisor = String(row['المشرف التقني'] || row['المشرف التقنى'] || matchedGroup?.technical_supervisor || '').trim();
         const mohfez = String(row['المحفظ'] || matchedGroup?.mohfez || '').trim();
         const coordinator = String(row['المنسق'] || matchedGroup?.coordinator || '').trim();
-        const examDate = String(row['تاريخ الاختبار'] || '').trim();
-        const examTime = String(row['توقيت الاختبار'] || matchedGroup?.time_start || (groupNo > 20 ? '20:00' : (groupNo >= 1 ? '18:00' : ''))).trim().replace('.', ':');
+        const examDate = normalizeExamDate(row['تاريخ الاختبار'] || '');
+        const examTime = normalizeExamTime(row['توقيت الاختبار'] || matchedGroup?.time_start || (groupNo > 20 ? '20:00' : (groupNo >= 1 ? '18:00' : '')));
         const teamsLink = String(row['رابط تيمز'] || row['رابط الحلقة'] || matchedGroup?.teams_link || '').trim();
         const phone = String(row['رقم التليفون'] || row['رقم الهاتف'] || row['الهاتف'] || row['التليفون'] || '').trim();
 
@@ -1026,7 +1028,7 @@ function PlatformApplicantsList() {
 
                         {/* تاريخ وتوقيت الاختبار */}
                         <td style={{ textAlign: 'center', fontSize: 12, direction: 'ltr' }}>
-                          <div>{a.exam_date || '-'}</div>
+                          <div>{normalizeExamDate(a.exam_date) || '-'}</div>
                           <div style={{ color: 'var(--text-muted)' }}>
                             {a.exam_time ? formatTime12Ar(a.exam_time) : (grp?.shift_label || '')}
                           </div>
