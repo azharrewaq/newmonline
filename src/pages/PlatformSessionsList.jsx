@@ -274,40 +274,40 @@ function PlatformSessionsList() {
                 </thead>
                 <tbody>
                   <tr>
-                    <td style={{ width: '20%', textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ width: '20%', textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       اسم الدارس
                     </td>
-                    <td style={{ width: '30%', textAlign: 'right', fontWeight: '800', fontSize: 18, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ width: '30%', textAlign: 'right', fontWeight: '800', fontSize: 18, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {myApplicant.name || '-'}
                     </td>
-                    <td style={{ width: '20%', textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ width: '20%', textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       الرقم القومي / جواز السفر
                     </td>
-                    <td style={{ width: '30%', fontWeight: '800', fontSize: 17, direction: 'ltr', textAlign: 'right', color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ width: '30%', fontWeight: '800', fontSize: 17, direction: 'ltr', textAlign: 'right', color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {myApplicant.national_id || myApplicant.passport_no || '-'}
                     </td>
                   </tr>
 
                   <tr>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       الرواق المتقدم إليه
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {myApplicant.rowaq || '-'}
                     </td>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       المستوى المتقدم عليه
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {myApplicant.applied_level || myApplicant.level || '-'}
                     </td>
                   </tr>
 
                   <tr>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       تاريخ يوم الاختبار
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       <span style={{
                         display: 'inline-block',
                         direction: 'ltr',
@@ -321,10 +321,10 @@ function PlatformSessionsList() {
                         {myApplicant.exam_date || 'سيتم تحديده قريباً'}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       توقيت الاختبار والفترة
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       <span style={{
                         display: 'inline-block',
                         backgroundColor: '#10b981',
@@ -345,31 +345,31 @@ function PlatformSessionsList() {
                   </tr>
 
                   <tr>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       رقم مجموعة الاختبار
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 18, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 18, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {myApplicant.group_no ? `مجموعة رقم (${myApplicant.group_no})` : 'جاري التسكين'}
                     </td>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       المحفظ الممتحن
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {examMohfez && examMohfez !== '-' ? `الشيخ / ${examMohfez}` : 'سيتم تحديده قريباً'}
                     </td>
                   </tr>
 
                   <tr>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       المنسق المشرف
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {examCoord && examCoord !== '-' ? examCoord : 'سيتم تحديده قريباً'}
                     </td>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       نتيجة تحديد المستوى
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: myApplicant.tested_level ? '#10b981' : 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: myApplicant.tested_level ? '#10b981' : 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {myApplicant.tested_level
                         ? `${myApplicant.tested_level}${myApplicant.stopped_surah ? ` (متوقف عند سورة: ${myApplicant.stopped_surah})` : ''}`
                         : 'تُعلَن بعد أداء الاختبار'}
@@ -378,16 +378,16 @@ function PlatformSessionsList() {
 
                   {(myApplicant.preferred_days || myApplicant.preferred_time) && (
                     <tr>
-                      <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                      <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                         الأيام المناسبة للدراسة
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                      <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                         {myApplicant.preferred_days || '-'}
                       </td>
-                      <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.14)', color: 'var(--accent-gold)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
+                      <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                         التوقيت المناسب للدراسة
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-main)', border: '1px solid var(--border-subtle)' }}>
+                      <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                         {myApplicant.preferred_time || '-'}
                       </td>
                     </tr>

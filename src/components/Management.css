@@ -212,7 +212,7 @@
 }
 
 .form-input, .form-select {
-  background-color: #11141D;
+  background-color: var(--bg-card);
   border: 1px solid var(--border-subtle);
   color: var(--text-primary);
   padding: 12px 15px;
@@ -236,7 +236,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   overflow: hidden;
-  background-color: #11141D;
+  background-color: var(--bg-card);
 }
 
 .phone-input-wrapper:focus-within {

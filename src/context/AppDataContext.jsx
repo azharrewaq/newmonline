@@ -361,7 +361,7 @@ export function AppDataProvider({ children }) {
     return getFromLocalStorage('administrations', defaultAdmins);
   });
 
-  const [theme, setTheme] = useState(() => getFromLocalStorage('theme', 'dark'));
+  const [theme, setTheme] = useState(() => getFromLocalStorage('theme_mode', 'light'));
   const [rolePermissions, setRolePermissions] = useState(() => {
     const loaded = getFromLocalStorage('rolePermissions', defaultPermissions);
     if (loaded && (!loaded.rowaq_manager || !loaded.rowaq_admin || !loaded.platform_admin)) {
@@ -448,7 +448,7 @@ export function AppDataProvider({ children }) {
   // Save theme to localStorage
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    saveToLocalStorage('theme', theme);
+    saveToLocalStorage('theme_mode', theme);
   }, [theme]);
 
   // Database Persistent Synchronization
