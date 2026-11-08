@@ -314,18 +314,18 @@ function PlatformApplicantsCreate() {
           </div>
 
           <div className="form-group">
-            <label>المشرف العلمي</label>
+            <label>المشرف العلمي (من المحفظين)</label>
             <select name="scientific_supervisor" className="form-select" value={form.scientific_supervisor} onChange={handleChange}>
-              <option value="">--- اختر المشرف العلمي ---</option>
-              {platformSupervisors.map(s => <option key={s.id} value={s.name}>{s.name}{s.specialization ? ` (${s.specialization})` : ''}</option>)}
+              <option value="">--- اختر المشرف العلمي (من المحفظين) ---</option>
+              {platformMohfezs.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
             </select>
           </div>
 
           <div className="form-group">
-            <label>المشرف التقني</label>
+            <label>المشرف التقني (من المنسقين)</label>
             <select name="technical_supervisor" className="form-select" value={form.technical_supervisor} onChange={handleChange}>
-              <option value="">--- اختر المشرف التقني ---</option>
-              {platformSupervisors.map(s => <option key={s.id} value={s.name}>{s.name}{s.specialization ? ` (${s.specialization})` : ''}</option>)}
+              <option value="">--- اختر المشرف التقني (من المنسقين) ---</option>
+              {platformCoordinators.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
             </select>
           </div>
 

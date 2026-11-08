@@ -55,22 +55,9 @@ function PlatformApplicantsList() {
   const [bulkFromGroup, setBulkFromGroup] = useState(1);
   const [bulkToGroup, setBulkToGroup] = useState(10);
 
-  // قوائم المشرفين العلميين والتقنيين (مع إبقاء جميع المشرفين متاحين مرتبين حسب التخصص)
-  const scientificSupervisorsList = useMemo(() => {
-    return [...platformSupervisors].sort((a, b) => {
-      const aSci = a.specialization === 'علمي' ? 0 : 1;
-      const bSci = b.specialization === 'علمي' ? 0 : 1;
-      return aSci - bSci;
-    });
-  }, [platformSupervisors]);
-
-  const technicalSupervisorsList = useMemo(() => {
-    return [...platformSupervisors].sort((a, b) => {
-      const aTech = (a.specialization === 'تقني' || a.specialization === 'إداري') ? 0 : 1;
-      const bTech = (b.specialization === 'تقني' || b.specialization === 'إداري') ? 0 : 1;
-      return aTech - bTech;
-    });
-  }, [platformSupervisors]);
+  // المشرف العلمي يتم اختياره من قائمة المحفظين، والمشرف التقني يتم اختياره من قائمة المنسقين
+  const scientificSupervisorsList = platformMohfezs;
+  const technicalSupervisorsList = platformCoordinators;
 
   // فلاتر جدول المتقدمين
   const [filterName, setFilterName] = useState('');
@@ -106,8 +93,18 @@ function PlatformApplicantsList() {
     if (isAdminOrSupervisor) return null; // يرى الجميع
     const nums = new Set();
     placementGroups.forEach(g => {
-      if (isMohfez && g.mohfez && normalizeArabic(g.mohfez) === uName) nums.add(Number(g.group_no));
-      if (isCoordinator && g.coordinator && normalizeArabic(g.coordinator) === uName) nums.add(Number(g.group_no));
+      if (isMohfez && (
+        (g.mohfez && normalizeArabic(g.mohfez) === uName) ||
+        (g.scientific_supervisor && normalizeArabic(g.scientific_supervisor) === uName)
+      )) {
+        nums.add(Number(g.group_no));
+      }
+      if (isCoordinator && (
+        (g.coordinator && normalizeArabic(g.coordinator) === uName) ||
+        (g.technical_supervisor && normalizeArabic(g.technical_supervisor) === uName)
+      )) {
+        nums.add(Number(g.group_no));
+      }
     });
     return nums;
   }, [isAdminOrSupervisor, isSupervisor, isMohfez, isCoordinator, currentUser, placementGroups]);
@@ -119,8 +116,14 @@ function PlatformApplicantsList() {
       if (myGroupNumbers !== null) {
         const gNo = Number(a.group_no);
         const byGroup = gNo && myGroupNumbers.has(gNo);
-        const byMohfez = isMohfez && a.mohfez && normalizeArabic(a.mohfez) === uName;
-        const byCoord = isCoordinator && a.coordinator && normalizeArabic(a.coordinator) === uName;
+        const byMohfez = isMohfez && (
+          (a.mohfez && normalizeArabic(a.mohfez) === uName) ||
+          (a.scientific_supervisor && normalizeArabic(a.scientific_supervisor) === uName)
+        );
+        const byCoord = isCoordinator && (
+          (a.coordinator && normalizeArabic(a.coordinator) === uName) ||
+          (a.technical_supervisor && normalizeArabic(a.technical_supervisor) === uName)
+        );
         const bySup = isSupervisor && (
           (a.scientific_supervisor && normalizeArabic(a.scientific_supervisor) === uName) ||
           (a.technical_supervisor && normalizeArabic(a.technical_supervisor) === uName)
@@ -687,7 +690,7 @@ function PlatformApplicantsList() {
               </div>
 
               <div className="form-group">
-                <label>المشرف العلمي</label>
+                <label>المشرف العلمي (من المحفظين)</label>
                 <select
                   className="form-select"
                   value={filterScientificSupervisor}
@@ -696,14 +699,14 @@ function PlatformApplicantsList() {
                   <option value="">--- كل المشرفين العلميين ---</option>
                   {scientificSupervisorsList.map(s => (
                     <option key={s.id} value={s.name}>
-                      {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                      {s.name}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="form-group">
-                <label>المشرف التقني</label>
+                <label>المشرف التقني (من المنسقين)</label>
                 <select
                   className="form-select"
                   value={filterTechnicalSupervisor}
@@ -712,7 +715,7 @@ function PlatformApplicantsList() {
                   <option value="">--- كل المشرفين التقنيين ---</option>
                   {technicalSupervisorsList.map(s => (
                     <option key={s.id} value={s.name}>
-                      {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                      {s.name}
                     </option>
                   ))}
                 </select>
@@ -1088,7 +1091,7 @@ function PlatformApplicantsList() {
                 تسكين مشرف (علمي / تقني) للإشراف على عدد من المجموعات دفعة واحدة:
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <div className="form-group" style={{ minWidth: 180, marginBottom: 0 }}>
+                <div className="form-group" style={{ minWidth: 200, marginBottom: 0 }}>
                   <label style={{ fontSize: 13 }}>نوع الإشراف</label>
                   <select
                     className="form-select"
@@ -1096,23 +1099,29 @@ function PlatformApplicantsList() {
                     value={bulkSupType}
                     onChange={e => { setBulkSupType(e.target.value); setBulkSupName(''); }}
                   >
-                    <option value="scientific_supervisor">المشرف العلمي</option>
-                    <option value="technical_supervisor">المشرف التقني</option>
+                    <option value="scientific_supervisor">المشرف العلمي (من المحفظين)</option>
+                    <option value="technical_supervisor">المشرف التقني (من المنسقين)</option>
                   </select>
                 </div>
 
                 <div className="form-group" style={{ minWidth: 230, flex: 1, marginBottom: 0 }}>
-                  <label style={{ fontSize: 13 }}>اسم المشرف</label>
+                  <label style={{ fontSize: 13 }}>
+                    {bulkSupType === 'scientific_supervisor' ? 'اسم المشرف العلمي (من المحفظين)' : 'اسم المشرف التقني (من المنسقين)'}
+                  </label>
                   <select
                     className="form-select"
                     style={{ padding: '8px 12px', fontSize: 13 }}
                     value={bulkSupName}
                     onChange={e => setBulkSupName(e.target.value)}
                   >
-                    <option value="">--- اختر المشرف (أو اتركه فارغاً للإخلاء) ---</option>
+                    <option value="">
+                      {bulkSupType === 'scientific_supervisor'
+                        ? '--- اختر من قائمة المحفظين (أو اتركه فارغاً للإخلاء) ---'
+                        : '--- اختر من قائمة المنسقين (أو اتركه فارغاً للإخلاء) ---'}
+                    </option>
                     {(bulkSupType === 'scientific_supervisor' ? scientificSupervisorsList : technicalSupervisorsList).map(s => (
                       <option key={s.id} value={s.name}>
-                        {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                        {s.name}
                       </option>
                     ))}
                   </select>
@@ -1213,10 +1222,10 @@ function PlatformApplicantsList() {
                                   value={g.scientific_supervisor || ''}
                                   onChange={e => handleGroupUpdate(g, 'scientific_supervisor', e.target.value)}
                                 >
-                                  <option value="">--- مشرف علمي ---</option>
+                                  <option value="">--- مشرف علمي (من المحفظين) ---</option>
                                   {scientificSupervisorsList.map(s => (
                                     <option key={s.id} value={s.name}>
-                                      {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                                      {s.name}
                                     </option>
                                   ))}
                                 </select>
@@ -1232,10 +1241,10 @@ function PlatformApplicantsList() {
                                   value={g.technical_supervisor || ''}
                                   onChange={e => handleGroupUpdate(g, 'technical_supervisor', e.target.value)}
                                 >
-                                  <option value="">--- مشرف تقني ---</option>
+                                  <option value="">--- مشرف تقني (من المنسقين) ---</option>
                                   {technicalSupervisorsList.map(s => (
                                     <option key={s.id} value={s.name}>
-                                      {s.name}{s.specialization ? ` (${s.specialization})` : ''}
+                                      {s.name}
                                     </option>
                                   ))}
                                 </select>
