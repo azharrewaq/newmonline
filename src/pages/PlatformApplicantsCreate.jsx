@@ -262,14 +262,6 @@ function PlatformApplicantsCreate() {
           </div>
 
           <div className="form-group">
-            <label>المستوى المتقدم عليه (مرتبط بنوع الرواق)</label>
-            <select name="applied_level" className="form-select" value={form.applied_level} onChange={handleChange} disabled={!form.rowaq}>
-              <option value="">{form.rowaq ? '--- اختر المستوى المتقدم عليه ---' : 'اختر الرواق أولاً'}</option>
-              {availableLevels.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
-            </select>
-          </div>
-
-          <div className="form-group">
             <label>المستوى وفق الاختبار (مرتبط بنوع الرواق)</label>
             <select name="tested_level" className="form-select" value={form.tested_level} onChange={handleChange} disabled={!form.rowaq}>
               <option value="">{form.rowaq ? '--- اختر المستوى وفق الاختبار ---' : 'اختر الرواق أولاً'}</option>

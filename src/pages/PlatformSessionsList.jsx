@@ -295,14 +295,8 @@ function PlatformSessionsList() {
                     <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       الرواق المتقدم إليه
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+                    <td colSpan="3" style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
                       {myApplicant.rowaq || '-'}
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
-                      المستوى المتقدم عليه
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
-                      {myApplicant.applied_level || myApplicant.level || '-'}
                     </td>
                   </tr>
 

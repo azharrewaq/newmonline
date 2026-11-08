@@ -431,7 +431,6 @@ function PlatformApplicantsList() {
         'المحافظة': a.governorate || '',
         ...(hideStudentPhone ? {} : { 'رقم التليفون': a.phone || '' }),
         'الرواق': normalizeApplicantRowaq(a.rowaq, a.gender) || '',
-        'المستوى المتقدم عليه': a.applied_level || a.level || '',
         'المستوى وفق الاختبار': a.tested_level || '',
         'السورة المتوقف عندها': a.stopped_surah || '',
         'الأيام المناسبة': normalizePreferredDays(a.preferred_days) || '',
@@ -459,7 +458,6 @@ function PlatformApplicantsList() {
       'المحافظة': '',
       'رقم التليفون': '',
       'الرواق': '',
-      'المستوى المتقدم عليه': '',
       'المستوى وفق الاختبار': '',
       'السورة المتوقف عندها': '',
       'الأيام المناسبة': '',
@@ -1022,7 +1020,6 @@ function PlatformApplicantsList() {
                   <th style={{ textAlign: 'center' }}>المحافظة</th>
                   {!hideStudentPhone && <th style={{ textAlign: 'center' }}>رقم التليفون</th>}
                   <th style={{ textAlign: 'center' }}>الرواق</th>
-                  <th style={{ textAlign: 'center' }}>المستوى المتقدم عليه</th>
                   <th style={{ textAlign: 'center' }}>المستوى وفق الاختبار</th>
                   <th style={{ textAlign: 'center' }}>السورة المتوقف عندها</th>
                   <th style={{ textAlign: 'center' }}>الأيام المناسبة</th>
@@ -1089,20 +1086,6 @@ function PlatformApplicantsList() {
                           >
                             <option value="">-- الرواق --</option>
                             {APPLICANT_ROWAQ_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                          </select>
-                        </td>
-
-                        {/* المستوى المتقدم عليه (مرتبط بنوع الرواق) */}
-                        <td style={{ minWidth: 175 }}>
-                          <select
-                            className="form-select"
-                            style={{ padding: '4px 8px', fontSize: 13 }}
-                            value={a.applied_level || a.level || ''}
-                            disabled={!rowRowaq}
-                            onChange={e => handleInlineUpdate(a, 'applied_level', e.target.value)}
-                          >
-                            <option value="">{rowRowaq ? '-- المستوى المتقدم عليه --' : 'اختر الرواق أولاً'}</option>
-                            {rowLevels.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
                           </select>
                         </td>
 
@@ -1697,7 +1680,6 @@ function PlatformApplicantsList() {
                               'الاسم': m.name,
                               'الرقم القومي أو جواز السفر': m.national_id || m.passport_no || '',
                               'الرواق': b.rowaq,
-                              'المستوى المتقدم عليه': m.applied_level || m.level || '',
                               'المستوى وفق الاختبار': m.tested_level || b.level || '',
                               'السورة المتوقف عندها': b.stopped_surah,
                               'الأيام المناسبة': b.preferred_days,
