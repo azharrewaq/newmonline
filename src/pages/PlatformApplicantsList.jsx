@@ -241,6 +241,8 @@ function PlatformApplicantsList() {
 
   // تحديث بيانات إحدى المجموعات الـ 40 + عكسها على المتقدمين المسكنين فيها
   const handleGroupUpdate = (group, field, value) => {
+    // المنسق الإداري يستطيع تسكين المحفظ فقط على مجموعاته
+    if (!isAdminOrSupervisor && !(isCoordinator && field === 'mohfez')) return;
     updatePlacementGroup(group.id, { [field]: value });
   };
 
@@ -1489,7 +1491,7 @@ function PlatformApplicantsList() {
                               )}
                             </td>
                             <td style={{ minWidth: 200 }}>
-                              {isAdminOrSupervisor ? (
+                              {(isAdminOrSupervisor || isCoordinator) ? (
                                 <select
                                   className="form-select"
                                   style={{ padding: '5px 8px', fontSize: 13 }}
