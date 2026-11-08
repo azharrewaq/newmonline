@@ -178,11 +178,8 @@ export default async function handler(req, res) {
       let totalAssigned = 0;
 
       for (const [key, appList] of groupDateMap.entries()) {
-        const [gStr] = key.split('||');
-        const gNo = Number(gStr);
-        const slots = (gNo >= 1 && gNo <= 20)
-          ? ['18:00 - 18:30', '18:30 - 19:00', '19:00 - 19:30', '19:30 - 20:00']
-          : ['20:00 - 20:30', '20:30 - 21:00', '21:00 - 21:30', '21:30 - 22:00'];
+        // جميع المجموعات (من 1 إلى 40) مواعيدها من 6 إلى 8 مساءً مقسمة لـ 4 فترات
+        const slots = ['18:00 - 18:30', '18:30 - 19:00', '19:00 - 19:30', '19:30 - 20:00'];
 
         const N = appList.length;
         const q = Math.floor(N / 4);
