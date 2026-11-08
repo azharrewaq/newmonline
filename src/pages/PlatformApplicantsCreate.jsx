@@ -16,6 +16,8 @@ import {
   EXAM_TIME_OPTIONS,
   normalizeExamDate,
   normalizeExamTime,
+  isLegacyDefaultGroupShift,
+  getGroupTimeLabel,
 } from '../utils/placementHelpers';
 
 function PlatformApplicantsCreate() {
@@ -98,7 +100,7 @@ function PlatformApplicantsCreate() {
         technical_supervisor: grp?.technical_supervisor || prev.technical_supervisor,
         mohfez: grp?.mohfez || prev.mohfez,
         coordinator: grp?.coordinator || prev.coordinator,
-        exam_time: grp?.time_start || prev.exam_time,
+        exam_time: (!isLegacyDefaultGroupShift(grp) && grp?.time_start) || prev.exam_time,
         teams_link: grp?.teams_link || prev.teams_link,
       }));
     } else {
@@ -318,19 +320,25 @@ function PlatformApplicantsCreate() {
             <label>رقم المجموعة (1 - 40)</label>
             <select name="group_no" className="form-select" value={form.group_no} onChange={handleChange}>
               <option value="">--- بدون مجموعة حالياً ---</option>
-              <optgroup label="الفترة الأولى: من 6 إلى 8 مساءً (مجموعات 1 - 20)">
-                {placementGroups.filter(g => g.group_no <= 20).map(g => (
-                  <option key={g.group_no} value={g.group_no}>
-                    مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''} — من 6 إلى 8 م
-                  </option>
-                ))}
+              <optgroup label="المجموعات 1 - 20">
+                {placementGroups.filter(g => g.group_no <= 20).map(g => {
+                  const lbl = getGroupTimeLabel(g);
+                  return (
+                    <option key={g.group_no} value={g.group_no}>
+                      مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''}{lbl ? ` — ${lbl}` : ''}
+                    </option>
+                  );
+                })}
               </optgroup>
-              <optgroup label="الفترة الثانية: من 8 إلى 10 مساءً (مجموعات 21 - 40)">
-                {placementGroups.filter(g => g.group_no > 20).map(g => (
-                  <option key={g.group_no} value={g.group_no}>
-                    مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''} — من 8 إلى 10 م
-                  </option>
-                ))}
+              <optgroup label="المجموعات 21 - 40">
+                {placementGroups.filter(g => g.group_no > 20).map(g => {
+                  const lbl = getGroupTimeLabel(g);
+                  return (
+                    <option key={g.group_no} value={g.group_no}>
+                      مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''}{lbl ? ` — ${lbl}` : ''}
+                    </option>
+                  );
+                })}
               </optgroup>
             </select>
           </div>

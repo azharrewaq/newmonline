@@ -23,6 +23,8 @@ import {
   formatTime12Ar,
   normalizeExamDate,
   normalizeExamTime,
+  isLegacyDefaultGroupShift,
+  getGroupTimeLabel,
   buildExamSheetsByGroupAndCoordinator,
   printPlacementExamSheets,
 } from '../utils/placementHelpers';
@@ -87,7 +89,7 @@ function PlatformApplicantsList() {
   const [filterScientificSupervisor, setFilterScientificSupervisor] = useState('');
   const [filterTechnicalSupervisor, setFilterTechnicalSupervisor] = useState('');
   const [filterCoordinator, setFilterCoordinator] = useState('');
-  const [filterShift, setFilterShift] = useState(''); // '' | '6_8' | '8_10'
+  const [filterShift, setFilterShift] = useState(''); // توقيت الاختبار HH:MM (وفق ما يتم رفعه)
   const [filterExamDate, setFilterExamDate] = useState('');
   const [filterDays, setFilterDays] = useState('');
   const [filterTime, setFilterTime] = useState('');
@@ -134,6 +136,17 @@ function PlatformApplicantsList() {
     });
     return nums;
   }, [isAdminOrSupervisor, isSupervisor, isMohfez, isCoordinator, currentUser, placementGroups]);
+
+  // توقيتات الاختبار المسجلة فعلياً (وفق ما تم رفعه أو إضافته)
+  const availableExamTimes = useMemo(() => {
+    const set = new Set();
+    platformApplicants.forEach(a => {
+      const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
+      const tm = normalizeExamTime(a.exam_time || grp?.time_start);
+      if (tm) set.add(tm);
+    });
+    return Array.from(set).sort();
+  }, [platformApplicants, placementGroups]);
 
   // تصفية المتقدمين حسب صلاحية المستخدم (أدمن / مشرف / منسق / محفظ) + الفلاتر
   const filtered = useMemo(() => {
@@ -183,8 +196,7 @@ function PlatformApplicantsList() {
         const aCoord = a.coordinator || grp?.coordinator || '';
         if (normalizeArabic(aCoord) !== normalizeArabic(filterCoordinator)) return false;
       }
-      if (filterShift === '6_8' && !(Number(a.group_no) >= 1 && Number(a.group_no) <= 20)) return false;
-      if (filterShift === '8_10' && !(Number(a.group_no) >= 21 && Number(a.group_no) <= 40)) return false;
+      if (filterShift && normalizeExamTime(a.exam_time || grp?.time_start) !== filterShift) return false;
       if (filterExamDate && normalizeExamDate(a.exam_date) !== filterExamDate) return false;
       if (filterDays && normalizePreferredDays(a.preferred_days || '') !== filterDays) return false;
       if (filterTime && (a.preferred_time || '') !== filterTime) return false;
@@ -224,7 +236,7 @@ function PlatformApplicantsList() {
         patch.technical_supervisor = grp.technical_supervisor || applicant.technical_supervisor || '';
         patch.mohfez = grp.mohfez || applicant.mohfez || '';
         patch.coordinator = grp.coordinator || applicant.coordinator || '';
-        patch.exam_time = grp.time_start || applicant.exam_time || '';
+        patch.exam_time = (!isLegacyDefaultGroupShift(grp) && grp.time_start) || applicant.exam_time || '';
         patch.teams_link = grp.teams_link || applicant.teams_link || '';
       }
     }
@@ -241,8 +253,20 @@ function PlatformApplicantsList() {
 
   // تحديث بيانات إحدى المجموعات الـ 40 + عكسها على المتقدمين المسكنين فيها
   const handleGroupUpdate = (group, field, value) => {
-    // المنسق الإداري يستطيع تسكين المحفظ فقط على مجموعاته
-    if (!isAdminOrSupervisor && !(isCoordinator && field === 'mohfez')) return;
+    // المنسق الإداري يستطيع تسكين المحفظ أو تعديل توقيت مجموعاته
+    if (!isAdminOrSupervisor && !(isCoordinator && ['mohfez', 'time_start', 'time_end'].includes(field))) return;
+    if (field === 'time_start' || field === 'time_end') {
+      const wasLegacy = isLegacyDefaultGroupShift(group);
+      const patch = wasLegacy
+        ? {
+            time_start: field === 'time_start' ? value : '',
+            time_end: field === 'time_end' ? value : '',
+            shift_label: '',
+          }
+        : { [field]: value, shift_label: '' };
+      updatePlacementGroup(group.id, patch);
+      return;
+    }
     updatePlacementGroup(group.id, { [field]: value });
   };
 
@@ -413,7 +437,7 @@ function PlatformApplicantsList() {
         'الأيام المناسبة': normalizePreferredDays(a.preferred_days) || '',
         'التوقيت المناسب': a.preferred_time || '',
         'رقم المجموعة': a.group_no || '',
-        'فترة المجموعة': grp?.shift_label || '',
+        'فترة المجموعة': getGroupTimeLabel(grp, [a]),
         'المشرف العلمي': a.scientific_supervisor || grp?.scientific_supervisor || '',
         'المشرف التقني': a.technical_supervisor || grp?.technical_supervisor || '',
         'المحفظ': a.mohfez || grp?.mohfez || '',
@@ -512,7 +536,8 @@ function PlatformApplicantsList() {
         const mohfez = String(row['المحفظ'] || matchedGroup?.mohfez || '').trim();
         const coordinator = String(row['المنسق'] || matchedGroup?.coordinator || '').trim();
         const examDate = normalizeExamDate(row['تاريخ الاختبار'] || '');
-        const examTime = normalizeExamTime(row['توقيت الاختبار'] || matchedGroup?.time_start || (groupNo > 20 ? '20:00' : (groupNo >= 1 ? '18:00' : '')));
+        const groupCustomStart = matchedGroup && !isLegacyDefaultGroupShift(matchedGroup) ? matchedGroup.time_start : '';
+        const examTime = normalizeExamTime(row['توقيت الاختبار'] || groupCustomStart || '');
         const teamsLink = String(row['رابط تيمز'] || row['رابط الحلقة'] || matchedGroup?.teams_link || '').trim();
         const phone = String(row['رقم التليفون'] || row['رقم الهاتف'] || row['الهاتف'] || row['التليفون'] || '').trim();
 
@@ -657,7 +682,7 @@ function PlatformApplicantsList() {
         <div className="title-section">
           <h2>المتقدمون الجدد وخطة تحديد المستوى</h2>
           <p>
-            40 مجموعة يومياً (25 دارساً للمجموعة): 20 مجموعة من 6 إلى 8 مساءً • 20 مجموعة من 8 إلى 10 مساءً
+            40 مجموعة اختبار يومياً (سعة كل مجموعة 25 دارساً) — يتم تحديد توقيت وفترة كل مجموعة حسب إدخال المستخدمين
           </p>
         </div>
       </div>
@@ -674,7 +699,7 @@ function PlatformApplicantsList() {
           className={`btn ${activeTab === 'groups' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('groups')}
         >
-          <Layers size={16} /> المجموعات اليومية الـ 40 (20 من 6-8 م | 20 من 8-10 م)
+          <Layers size={16} /> المجموعات اليومية الـ 40
         </button>
         {isAdminOrSupervisor && (
           <button
@@ -728,21 +753,21 @@ function PlatformApplicantsList() {
               </div>
 
               <div className="form-group">
-                <label>الفترة / المجموعة</label>
+                <label>المجموعة</label>
                 <select
                   className="form-select"
                   value={filterGroupNo}
                   onChange={e => { setFilterGroupNo(e.target.value); setCurrentPage(1); }}
                 >
                   <option value="">--- كل المجموعات (1 - 40) ---</option>
-                  <optgroup label="الفترة الأولى: من 6 إلى 8 مساءً (1 - 20)">
+                  <optgroup label="المجموعات 1 - 20">
                     {placementGroups.filter(g => g.group_no <= 20).map(g => (
                       <option key={g.group_no} value={g.group_no}>
                         مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''}
                       </option>
                     ))}
                   </optgroup>
-                  <optgroup label="الفترة الثانية: من 8 إلى 10 مساءً (21 - 40)">
+                  <optgroup label="المجموعات 21 - 40">
                     {placementGroups.filter(g => g.group_no > 20).map(g => (
                       <option key={g.group_no} value={g.group_no}>
                         مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''}
@@ -797,15 +822,14 @@ function PlatformApplicantsList() {
               </div>
 
               <div className="form-group">
-                <label>فترة الاختبار</label>
+                <label>توقيت الاختبار</label>
                 <select
                   className="form-select"
                   value={filterShift}
                   onChange={e => { setFilterShift(e.target.value); setCurrentPage(1); }}
                 >
-                  <option value="">--- كل الفترتين ---</option>
-                  <option value="6_8">من 6 إلى 8 مساءً (مجموعات 1 - 20)</option>
-                  <option value="8_10">من 8 إلى 10 مساءً (مجموعات 21 - 40)</option>
+                  <option value="">--- كل التوقيتات ---</option>
+                  {availableExamTimes.map(tm => <option key={tm} value={tm}>{formatTime12Ar(tm)}</option>)}
                 </select>
               </div>
 
@@ -877,7 +901,7 @@ function PlatformApplicantsList() {
                   onChange={e => setPrintGroupNo(e.target.value)}
                 >
                   <option value="">جميع المجموعات المتاحة (حسب الفلتر)</option>
-                  <optgroup label="الفترة الأولى: من 6 إلى 8 مساءً (1 - 20)">
+                  <optgroup label="المجموعات 1 - 20">
                     {placementGroups
                       .filter(g => g.group_no <= 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
                       .map(g => {
@@ -889,7 +913,7 @@ function PlatformApplicantsList() {
                         );
                       })}
                   </optgroup>
-                  <optgroup label="الفترة الثانية: من 8 إلى 10 مساءً (21 - 40)">
+                  <optgroup label="المجموعات 21 - 40">
                     {placementGroups
                       .filter(g => g.group_no > 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
                       .map(g => {
@@ -1147,7 +1171,7 @@ function PlatformApplicantsList() {
                               <option value="">غير مسكن</option>
                               {placementGroups.map(g => (
                                 <option key={g.group_no} value={g.group_no}>
-                                  مجموعة {g.group_no} ({g.group_no <= 20 ? '6-8 م' : '8-10 م'})
+                                  مجموعة {g.group_no}{getGroupTimeLabel(g) ? ` (${getGroupTimeLabel(g)})` : ''}
                                 </option>
                               ))}
                             </select>
@@ -1160,7 +1184,7 @@ function PlatformApplicantsList() {
                         <td style={{ textAlign: 'center', fontSize: 12, direction: 'ltr' }}>
                           <div>{normalizeExamDate(a.exam_date) || '-'}</div>
                           <div style={{ color: 'var(--text-muted)' }}>
-                            {a.exam_time ? formatTime12Ar(a.exam_time) : (grp?.shift_label || '')}
+                            {a.exam_time ? formatTime12Ar(a.exam_time) : (getGroupTimeLabel(grp, []) || '')}
                           </div>
                         </td>
 
@@ -1217,7 +1241,7 @@ function PlatformApplicantsList() {
         </>
       )}
 
-      {/* ───────── التبويب الثاني: المجموعات الـ 40 (20 من 6-8 م | 20 من 8-10 م) ───────── */}
+      {/* ───────── التبويب الثاني: المجموعات الـ 40 ───────── */}
       {activeTab === 'groups' && (
         <div>
           <div className="box-card" style={{ padding: '16px 20px', marginBottom: 16 }}>
@@ -1234,7 +1258,7 @@ function PlatformApplicantsList() {
                   onChange={e => setPrintGroupNo(e.target.value)}
                 >
                   <option value="">جميع المجموعات (40 مجموعة)</option>
-                  <optgroup label="الفترة الأولى: من 6 إلى 8 مساءً (1 - 20)">
+                  <optgroup label="المجموعات 1 - 20">
                     {placementGroups
                       .filter(g => g.group_no <= 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
                       .map(g => {
@@ -1246,7 +1270,7 @@ function PlatformApplicantsList() {
                         );
                       })}
                   </optgroup>
-                  <optgroup label="الفترة الثانية: من 8 إلى 10 مساءً (21 - 40)">
+                  <optgroup label="المجموعات 21 - 40">
                     {placementGroups
                       .filter(g => g.group_no > 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
                       .map(g => {
@@ -1393,8 +1417,8 @@ function PlatformApplicantsList() {
           )}
 
           {[
-            { title: 'الفترة الأولى: 20 مجموعة (من 6 إلى 8 مساءً)', min: 1, max: 20, badgeColor: '#3b82f6' },
-            { title: 'الفترة الثانية: 20 مجموعة (من 8 إلى 10 مساءً)', min: 21, max: 40, badgeColor: '#10b981' },
+            { title: 'المجموعات من 1 إلى 20', min: 1, max: 20, badgeColor: '#3b82f6' },
+            { title: 'المجموعات من 21 إلى 40', min: 21, max: 40, badgeColor: '#10b981' },
           ].map(shift => {
             const shiftGroups = placementGroups.filter(g => {
               if (g.group_no < shift.min || g.group_no > shift.max) return false;
@@ -1417,7 +1441,7 @@ function PlatformApplicantsList() {
                     <thead>
                       <tr>
                         <th style={{ textAlign: 'center' }}>رقم المجموعة</th>
-                        <th style={{ textAlign: 'center' }}>الفترة الزمنية</th>
+                        <th style={{ textAlign: 'center' }}>توقيت المجموعة (من - إلى)</th>
                         <th style={{ textAlign: 'center' }}>المشرف العلمي</th>
                         <th style={{ textAlign: 'center' }}>المشرف التقني</th>
                         <th style={{ textAlign: 'center' }}>المحفظ (اسم الحلقة/المجموعة)</th>
@@ -1445,12 +1469,31 @@ function PlatformApplicantsList() {
                               {g.mohfez && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>حلقة الشيخ/ {g.mohfez}</div>}
                             </td>
                             <td style={{ textAlign: 'center' }}>
-                              <span style={{
-                                background: `${shift.badgeColor}20`, color: shift.badgeColor,
-                                padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 'bold'
-                              }}>
-                                {g.shift_label}
-                              </span>
+                              {isAdminOrSupervisor ? (
+                                <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                  <input
+                                    type="time"
+                                    className="form-input"
+                                    style={{ padding: '4px 6px', fontSize: 12, width: 105 }}
+                                    title="من الساعة"
+                                    value={!isLegacyDefaultGroupShift(g) ? (normalizeExamTime(g.time_start) || '') : ''}
+                                    onChange={e => handleGroupUpdate(g, 'time_start', e.target.value)}
+                                  />
+                                  <span style={{ fontSize: 12 }}>إلى</span>
+                                  <input
+                                    type="time"
+                                    className="form-input"
+                                    style={{ padding: '4px 6px', fontSize: 12, width: 105 }}
+                                    title="إلى الساعة"
+                                    value={!isLegacyDefaultGroupShift(g) ? (normalizeExamTime(g.time_end) || '') : ''}
+                                    onChange={e => handleGroupUpdate(g, 'time_end', e.target.value)}
+                                  />
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: 12, fontWeight: 'bold', color: shift.badgeColor }}>
+                                  {getGroupTimeLabel(g, groupApps) || 'لم يحدد بعد'}
+                                </span>
+                              )}
                             </td>
                             <td style={{ minWidth: 185 }}>
                               {isAdminOrSupervisor ? (

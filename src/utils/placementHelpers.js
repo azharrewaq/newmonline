@@ -115,29 +115,19 @@ export const EXAM_TIME_OPTIONS = [
   '21:00',
 ];
 
-// الفترتان اليوميتان للـ 40 مجموعة اختبار
-export const PLACEMENT_SLOTS = [
-  { id: 'slot_6_8', label: 'من 6 إلى 8 مساءً', time_start: '18:00', time_end: '20:00', defaultExamTime: '18:00', range: [1, 20] },
-  { id: 'slot_8_10', label: 'من 8 إلى 10 مساءً', time_start: '20:00', time_end: '22:00', defaultExamTime: '20:00', range: [21, 40] },
-];
-
 /**
- * توليد الـ 40 مجموعة الافتراضية:
- * - المجموعات 1..20: من 6 إلى 8 مساءً
- * - المجموعات 21..40: من 8 إلى 10 مساءً
- * مع ترك تسكين المحفظين والمنسقين والدارسين لاحقاً
+ * توليد الـ 40 مجموعة الافتراضية بدون تحديد توقيت مسبق (يترك التوقيت لإدخال المستخدمين)
  */
 export const createDefaultPlacementGroups = () => {
   return Array.from({ length: PLACEMENT_TOTAL_GROUPS }, (_, i) => {
     const groupNo = i + 1;
-    const isFirstShift = groupNo <= 20;
     return {
       id: `pg-${groupNo}`,
       group_no: groupNo,
       title: `مجموعة ${groupNo}`,
-      shift_label: isFirstShift ? 'من 6 إلى 8 مساءً' : 'من 8 إلى 10 مساءً',
-      time_start: isFirstShift ? '18:00' : '20:00',
-      time_end: isFirstShift ? '20:00' : '22:00',
+      shift_label: '',
+      time_start: '',
+      time_end: '',
       capacity: PLACEMENT_GROUP_CAPACITY,
       scientific_supervisor: '',
       technical_supervisor: '',
@@ -146,6 +136,16 @@ export const createDefaultPlacementGroups = () => {
       teams_link: '',
     };
   });
+};
+
+/**
+ * فحص ما إذا كانت بيانات توقيت المجموعة هي القيم الافتراضية القديمة قبل إلغاء التوقيت الثابت
+ */
+export const isLegacyDefaultGroupShift = (g) => {
+  if (!g) return false;
+  if (g.shift_label === 'من 6 إلى 8 مساءً' && g.time_start === '18:00' && g.time_end === '20:00') return true;
+  if (g.shift_label === 'من 8 إلى 10 مساءً' && g.time_start === '20:00' && g.time_end === '22:00') return true;
+  return false;
 };
 
 /**
@@ -270,7 +270,8 @@ export const getApplicantExamJoinState = (applicant, group = null, now = new Dat
     return { visible: false, open: false, reason: 'انتهى يوم الاختبار الخاص بك' };
   }
 
-  const examTimeStr = normalizeExamTime(applicant.exam_time) || group?.time_start || '18:00';
+  const groupTimeStart = !isLegacyDefaultGroupShift(group) ? normalizeExamTime(group?.time_start) : '';
+  const examTimeStr = normalizeExamTime(applicant.exam_time) || groupTimeStart || '';
   const examMinutes = parseMinutes(examTimeStr);
   if (examMinutes === null) {
     return { visible: true, open: true, reason: '' };
@@ -306,6 +307,22 @@ export const formatTime12Ar = (timeStr) => {
   const period = h >= 12 ? 'م' : 'ص';
   h = h % 12 || 12;
   return `${String(h).padStart(2, '0')}:${m} ${period}`;
+};
+
+/**
+ * استخراج وصف توقيت المجموعة وفق ما أدخله المستخدم فقط (بدون افتراض 6-8 أو 8-10)
+ */
+export const getGroupTimeLabel = (group, groupApplicants = []) => {
+  if (group && !isLegacyDefaultGroupShift(group)) {
+    const start = normalizeExamTime(group.time_start);
+    const end = normalizeExamTime(group.time_end);
+    if (start && end) return `من ${formatTime12Ar(start)} إلى ${formatTime12Ar(end)}`;
+    if (start) return formatTime12Ar(start);
+    if (group.shift_label) return group.shift_label;
+  }
+  const appTime = normalizeExamTime(groupApplicants?.[0]?.exam_time);
+  if (appTime) return formatTime12Ar(appTime);
+  return '';
 };
 
 const escapeHtml = (val) =>
@@ -359,7 +376,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([d, rows]) => ({
           groupNo: grp?.group_no || targetGroupNo,
-          shiftLabel: grp?.shift_label || (Number(targetGroupNo) <= 20 ? 'من 6 إلى 8 مساءً' : 'من 8 إلى 10 مساءً'),
+          shiftLabel: getGroupTimeLabel(grp, rows),
           scientificSupervisor: grp?.scientific_supervisor || rows[0]?.scientific_supervisor || '',
           technicalSupervisor: grp?.technical_supervisor || rows[0]?.technical_supervisor || '',
           coordinator: targetCoordinator || grp?.coordinator || rows[0]?.coordinator || '',
@@ -378,7 +395,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
 
     return [{
       groupNo: grp?.group_no || targetGroupNo,
-      shiftLabel: grp?.shift_label || (Number(targetGroupNo) <= 20 ? 'من 6 إلى 8 مساءً' : 'من 8 إلى 10 مساءً'),
+      shiftLabel: getGroupTimeLabel(grp, groupApplicants),
       scientificSupervisor: grp?.scientific_supervisor || groupApplicants[0]?.scientific_supervisor || '',
       technicalSupervisor: grp?.technical_supervisor || groupApplicants[0]?.technical_supervisor || '',
       coordinator: targetCoordinator || grp?.coordinator || groupApplicants[0]?.coordinator || '',
@@ -411,7 +428,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
       if (!map.has(key)) {
         map.set(key, {
           groupNo: gNo,
-          shiftLabel: grp?.shift_label || (Number(gNo) <= 20 ? 'من 6 إلى 8 مساءً' : (Number(gNo) <= 40 ? 'من 8 إلى 10 مساءً' : '')),
+          shiftLabel: getGroupTimeLabel(grp, [a]),
           scientificSupervisor: sciSup,
           technicalSupervisor: techSup,
           coordinator: coord,
@@ -425,6 +442,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
       if (!bucket.scientificSupervisor && sciSup) bucket.scientificSupervisor = sciSup;
       if (!bucket.technicalSupervisor && techSup) bucket.technicalSupervisor = techSup;
       if (!bucket.mohfez && mohfez) bucket.mohfez = mohfez;
+      if (!bucket.shiftLabel) bucket.shiftLabel = getGroupTimeLabel(grp, [a]);
       if (examDate) bucket.datesSet.add(examDate);
       if (!bucket.examDate && examDate) bucket.examDate = examDate;
       bucket.rows.push(a);
@@ -451,11 +469,11 @@ export const buildExamSheetsByGroupAndCoordinator = (
   // إذا لم يكن هناك دارسون بعد، نطبع نموذجاً فارغاً (25 صفاً) للمجموعات المطابقة
   const groupsToPrint = targetCoordinator
     ? placementGroups.filter(g => normalizeArabic(g.coordinator || '') === normalizeArabic(targetCoordinator))
-    : [placementGroups[0] || { group_no: 1, shift_label: 'من 6 إلى 8 مساءً', coordinator: '', mohfez: '' }];
+    : [placementGroups[0] || { group_no: 1, shift_label: '', coordinator: '', mohfez: '' }];
 
   return (groupsToPrint.length > 0 ? groupsToPrint : [placementGroups[0]]).map(grp => ({
     groupNo: grp?.group_no || 1,
-    shiftLabel: grp?.shift_label || 'من 6 إلى 8 مساءً',
+    shiftLabel: getGroupTimeLabel(grp, []),
     scientificSupervisor: grp?.scientific_supervisor || '',
     technicalSupervisor: grp?.technical_supervisor || '',
     coordinator: grp?.coordinator || targetCoordinator || '',

@@ -8,7 +8,7 @@ import { filterSessionsForUser } from '../utils/userScopeHelper';
 import { countriesList } from '../data/countries';
 import { getJoinState, useNow, formatReportText, toLocalDateStr } from '../utils/sessionHelpers';
 import { getSubstitutionFor } from '../utils/userScopeHelper';
-import { getApplicantExamJoinState, formatTime12Ar, normalizeExamDate } from '../utils/placementHelpers';
+import { getApplicantExamJoinState, formatTime12Ar, normalizeExamDate, getGroupTimeLabel } from '../utils/placementHelpers';
 import SubstituteModal from '../components/SubstituteModal';
 
 function PlatformSessionsList() {
@@ -207,7 +207,8 @@ function PlatformSessionsList() {
     const examCoord = myApplicant?.coordinator || myPlacementGroup?.coordinator || '-';
     const examSciSupervisor = myApplicant?.scientific_supervisor || myPlacementGroup?.scientific_supervisor || '-';
     const examTechSupervisor = myApplicant?.technical_supervisor || myPlacementGroup?.technical_supervisor || '-';
-    const examShift = myPlacementGroup?.shift_label || (myApplicant?.exam_time ? formatTime12Ar(myApplicant.exam_time) : '-');
+    const groupTimeLabel = getGroupTimeLabel(myPlacementGroup, myApplicant ? [myApplicant] : []);
+    const examShift = groupTimeLabel || (myApplicant?.exam_time ? formatTime12Ar(myApplicant.exam_time) : 'سيتم تحديده قريباً');
 
     const reportBoxStyle = {
       whiteSpace: 'pre-wrap', lineHeight: 2, background: 'var(--bg-secondary)',
@@ -338,9 +339,9 @@ function PlatformSessionsList() {
                       }}>
                         {myApplicant.exam_time ? `الساعة ${formatTime12Ar(myApplicant.exam_time)}` : examShift}
                       </span>
-                      {myPlacementGroup?.shift_label && myApplicant.exam_time && (
+                      {groupTimeLabel && myApplicant.exam_time && groupTimeLabel !== formatTime12Ar(myApplicant.exam_time) && (
                         <span style={{ fontSize: 15, fontWeight: '700', color: 'var(--text-primary)', marginRight: 10 }}>
-                          (فترة المجموعة: {myPlacementGroup.shift_label})
+                          (فترة المجموعة: {groupTimeLabel})
                         </span>
                       )}
                     </td>
