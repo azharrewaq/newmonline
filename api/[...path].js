@@ -243,23 +243,85 @@ export default async function handler(req, res) {
       return res.status(200).json(docs);
     }
 
-    // ── GET /api/:collection/diagnose ─────────────────────────────────────────
-    if (req.method === 'GET' && segment2 === 'diagnose') {
-      const t0 = Date.now();
-      const count = await col.countDocuments({});
-      const t1 = Date.now();
-      const sample = await col.find({}).limit(5).toArray();
-      const t2 = Date.now();
-      const allDocs = await col.find({}).toArray();
-      const t3 = Date.now();
-      const jsonLen = JSON.stringify(allDocs).length;
+    // ── GET /api/:collection/dedup-check ─────────────────────────────────────
+    if (req.method === 'GET' && segment2 === 'dedup-check') {
+      const totalDocs = await col.countDocuments({});
+      const dupAgg = await col.aggregate([
+        {
+          $group: {
+            _id: { $trim: { input: { $ifNull: ['$national_id', '$passport_no'] } } },
+            count: { $sum: 1 },
+            ids: { $push: '$_id' },
+            names: { $push: '$name' },
+            dates: { $push: '$exam_date' },
+            groups: { $push: '$group_no' }
+          }
+        },
+        { $match: { _id: { $ne: '', $ne: null }, count: { $gt: 1 } } },
+        { $sort: { count: -1 } }
+      ]).toArray();
+
+      const totalDuplicatesCount = dupAgg.reduce((acc, d) => acc + (d.count - 1), 0);
+      const distinctCount = totalDocs - totalDuplicatesCount;
+
       return res.status(200).json({
-        collection: collectionName,
-        count,
-        countTimeMs: t1 - t0,
-        sampleTimeMs: t2 - t1,
-        allDocsTimeMs: t3 - t2,
-        uncompressedSizeMB: (jsonLen / (1024 * 1024)).toFixed(2)
+        totalDocs,
+        totalDuplicatesCount,
+        distinctCount,
+        duplicatedKeysCount: dupAgg.length,
+        sampleDuplicates: dupAgg.slice(0, 10).map(d => ({
+          nid: d._id,
+          count: d.count,
+          names: Array.from(new Set(d.names)),
+          dates: d.dates,
+          groups: d.groups,
+          ids: d.ids
+        }))
+      });
+    }
+
+    // ── POST /api/:collection/dedup-clean ────────────────────────────────────
+    if (req.method === 'POST' && segment2 === 'dedup-clean') {
+      const dupAgg = await col.aggregate([
+        {
+          $group: {
+            _id: { $trim: { input: { $ifNull: ['$national_id', '$passport_no'] } } },
+            count: { $sum: 1 },
+            docs: { $push: { _id: '$_id', id: '$id', exam_date: '$exam_date', group_no: '$group_no' } }
+          }
+        },
+        { $match: { _id: { $ne: '', $ne: null }, count: { $gt: 1 } } }
+      ]).toArray();
+
+      const idsToDelete = [];
+      for (const item of dupAgg) {
+        const sorted = item.docs.sort((a, b) => {
+          const aHasDate = a.exam_date ? 1 : 0;
+          const bHasDate = b.exam_date ? 1 : 0;
+          if (aHasDate !== bHasDate) return bHasDate - aHasDate;
+          return String(b._id).localeCompare(String(a._id));
+        });
+        for (let i = 1; i < sorted.length; i++) {
+          idsToDelete.push(sorted[i]._id);
+        }
+      }
+
+      let deletedCount = 0;
+      if (idsToDelete.length > 0) {
+        for (let i = 0; i < idsToDelete.length; i += 1000) {
+          const chunk = idsToDelete.slice(i, i + 1000);
+          const delRes = await col.deleteMany({ _id: { $in: chunk } });
+          deletedCount += delRes.deletedCount || 0;
+        }
+      }
+
+      const remainingCount = await col.countDocuments({});
+
+      return res.status(200).json({
+        success: true,
+        deletedDuplicates: deletedCount,
+        remainingCount,
+        message: `تم إزالة ${deletedCount} سجل مكرر بنجاح، والعدد الإجمالي المتبقي: ${remainingCount}`
       });
     }
 
