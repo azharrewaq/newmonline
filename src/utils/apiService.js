@@ -254,7 +254,8 @@ export const platformApplicantsAPI = {
   update: (id, data) => apiCall(`/platformapplicants/${id}`, { method: 'PUT', body: data }),
   delete: (id) => apiCall(`/platformapplicants/${id}`, { method: 'DELETE' }),
   deleteAll: () => apiCall('/platformapplicants/all', { method: 'DELETE' }),
-  bulkImport: (items) => apiCall('/platformapplicants/bulk-import', { method: 'POST', body: { items } })
+  bulkImport: (items) => apiCall('/platformapplicants/bulk-import', { method: 'POST', body: { items } }),
+  rescheduleDay9: () => apiCall('/platformapplicants/reschedule-day9', { method: 'POST' })
 };
 
 // Platform Rowaqs API

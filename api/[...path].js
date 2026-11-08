@@ -87,6 +87,70 @@ export default async function handler(req, res) {
       return res.status(201).json({ inserted: result.insertedCount });
     }
 
+    // ── POST /api/:collection/reschedule-day9 ─────────────────────────────────
+    if (req.method === 'POST' && segment2 === 'reschedule-day9') {
+      // 1. تطبيع جميع أرقام إكسيل التسلسلية القديمة في قاعدة البيانات إلى صيغة YYYY-MM-DD
+      const serialEntries = [
+        ['46336', '2026-11-10'],
+        ['46337', '2026-11-11'],
+        ['46338', '2026-11-12'],
+        ['46339', '2026-11-13'],
+        ['46340', '2026-11-14'],
+      ];
+      for (const [serialStr, normDate] of serialEntries) {
+        const serialNum = Number(serialStr);
+        await col.updateMany(
+          { exam_date: { $in: [serialStr, serialNum] } },
+          { $set: { exam_date: normDate } }
+        );
+      }
+
+      // 2. ترحيل دارسي يوم 9 نوفمبر إلى ما بعد اليوم الأخير لكل مجموعة
+      const day9Query = { exam_date: { $in: ['46335', 46335, '2026-11-09', '2026/11/09'] } };
+
+      // أ) المجموعات التي تنتهي 13 نوفمبر -> ترحيل يوم 9 إلى 14 نوفمبر
+      // المجموعات 1 و 2، والمجموعات من 31 إلى 40
+      const g14 = [1, 2, ...Array.from({ length: 10 }, (_, i) => 31 + i)];
+      const g14All = [...g14, ...g14.map(String)];
+      const res14 = await col.updateMany(
+        { ...day9Query, group_no: { $in: g14All } },
+        { $set: { exam_date: '2026-11-14' } }
+      );
+
+      // ب) المجموعات التي تنتهي 12 نوفمبر -> ترحيل يوم 9 إلى 13 نوفمبر
+      // المجموعات 3 و 4 و 5، والمجموعات من 11 إلى 20
+      const g13 = [3, 4, 5, ...Array.from({ length: 10 }, (_, i) => 11 + i)];
+      const g13All = [...g13, ...g13.map(String)];
+      const res13 = await col.updateMany(
+        { ...day9Query, group_no: { $in: g13All } },
+        { $set: { exam_date: '2026-11-13' } }
+      );
+
+      // ج) المجموعات التي تمتد حتى 14 ومجموعات الكبار 21 و 22 -> ترحيل يوم 9 إلى 15 نوفمبر
+      // المجموعات من 6 إلى 10، ومجموعتي 21 و 22
+      const g15 = [6, 7, 8, 9, 10, 21, 22];
+      const g15All = [...g15, ...g15.map(String)];
+      const res15 = await col.updateMany(
+        { ...day9Query, group_no: { $in: g15All } },
+        { $set: { exam_date: '2026-11-15' } }
+      );
+
+      // د) أي دارس متبقي على يوم 9 بدون مجموعة محددة -> ترحيل إلى 14 نوفمبر
+      const resRemaining = await col.updateMany(
+        day9Query,
+        { $set: { exam_date: '2026-11-14' } }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: 'تم ترحيل دارسي يوم 9 نوفمبر بنجاح لما بعد اليوم الأخير لكل مجموعة',
+        movedTo13: res13.modifiedCount,
+        movedTo14: res14.modifiedCount + resRemaining.modifiedCount,
+        movedTo15: res15.modifiedCount,
+        totalRescheduled: res13.modifiedCount + res14.modifiedCount + res15.modifiedCount + resRemaining.modifiedCount
+      });
+    }
+
     // ── DELETE /api/:collection/all ────────────────────────────────────────────
     if (req.method === 'DELETE' && segment2 === 'all') {
       const result = await col.deleteMany({});

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
+import { platformApplicantsAPI } from '../utils/apiService';
 import { exportToXLSX, importFromXLSX, exportExamSheetsToXLSX } from '../utils/xlsxHelper';
 import { quranSurahs } from '../data/quranSurahs';
 import { normalizeArabic } from '../utils/userScopeHelper';
@@ -417,6 +418,22 @@ function PlatformApplicantsList() {
       allSheets.push(...sheets);
     });
     exportExamSheetsToXLSX(allSheets, 'كشوف_تحديد_المستوى_40_مجموعة_الجامع_الأزهر_نوفمبر_2026');
+  };
+
+  // ترحيل دارسي يوم 9 نوفمبر إلى ما بعد اليوم الأخير لكل مجموعة
+  const handleRescheduleDay9 = async () => {
+    if (!window.confirm('هل تريد بالتأكيد ترحيل دارسي يوم 9 نوفمبر إلى ما بعد اليوم الأخير لكل مجموعة (أيام 13 و 14 و 15 نوفمبر)؟')) return;
+    try {
+      const res = await platformApplicantsAPI.rescheduleDay9();
+      if (res && res.success) {
+        alert(`تم الترحيل بنجاح في قاعدة البيانات!\n\n- إلى 13 نوفمبر: ${res.movedTo13} دارساً\n- إلى 14 نوفمبر: ${res.movedTo14} دارساً\n- إلى 15 نوفمبر: ${res.movedTo15} دارساً\n\nإجمالي الدارسين المرحلين: ${res.totalRescheduled} دارساً`);
+        window.location.reload();
+      } else {
+        alert('حدث خطأ أثناء الترحيل.');
+      }
+    } catch (err) {
+      alert('فشل الترحيل: ' + err.message);
+    }
   };
 
   // تصدير جدول المتقدمين الحالي إلى Excel
@@ -978,6 +995,14 @@ function PlatformApplicantsList() {
                   <Link to="/platform-applicants/create" className="btn btn-primary" style={{ textDecoration: 'none' }}>
                     <Plus size={16} /> إضافة متقدم
                   </Link>
+                  <button
+                    className="btn btn-gold-outline"
+                    onClick={handleRescheduleDay9}
+                    title="ترحيل مواعيد اختبار دارسي يوم 9 نوفمبر إلى ما بعد اليوم الأخير لكل مجموعة"
+                    style={{ backgroundColor: 'rgba(212, 175, 55, 0.18)', borderColor: 'var(--accent-gold)', fontWeight: 'bold' }}
+                  >
+                    <Calendar size={16} /> ترحيل يوم 9 لما بعد اليوم الأخير
+                  </button>
                   <button className="btn btn-gold-outline" onClick={() => importRef.current.click()}>
                     <Upload size={16} /> استيراد من إكسيل
                   </button>
