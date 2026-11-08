@@ -151,6 +151,86 @@ export default async function handler(req, res) {
       });
     }
 
+    // ── POST /api/:collection/split-group-times ──────────────────────────────
+    if (req.method === 'POST' && segment2 === 'split-group-times') {
+      const applicants = await col.find(
+        { group_no: { $exists: true, $ne: null, $ne: '' } },
+        { projection: { _id: 1, id: 1, group_no: 1, exam_date: 1 } }
+      ).toArray();
+
+      if (!applicants || applicants.length === 0) {
+        return res.status(200).json({ success: true, updatedCount: 0, message: 'لا يوجد متقدمين مسكنين' });
+      }
+
+      const groupDateMap = new Map();
+      for (const app of applicants) {
+        const gNo = Number(app.group_no);
+        if (isNaN(gNo) || gNo < 1 || gNo > 40) continue;
+        const d = String(app.exam_date || '').trim();
+        const key = `${gNo}||${d}`;
+        if (!groupDateMap.has(key)) {
+          groupDateMap.set(key, []);
+        }
+        groupDateMap.get(key).push(app);
+      }
+
+      const bulkOps = [];
+      let totalAssigned = 0;
+
+      for (const [key, appList] of groupDateMap.entries()) {
+        const [gStr] = key.split('||');
+        const gNo = Number(gStr);
+        const slots = (gNo >= 1 && gNo <= 20)
+          ? ['18:00 - 18:30', '18:30 - 19:00', '19:00 - 19:30', '19:30 - 20:00']
+          : ['20:00 - 20:30', '20:30 - 21:00', '21:00 - 21:30', '21:30 - 22:00'];
+
+        const N = appList.length;
+        const q = Math.floor(N / 4);
+        const rem = N % 4;
+        const slotCounts = [
+          q + (rem > 0 ? 1 : 0),
+          q + (rem > 1 ? 1 : 0),
+          q + (rem > 2 ? 1 : 0),
+          q,
+        ];
+
+        let curIdx = 0;
+        for (let slotIdx = 0; slotIdx < 4; slotIdx++) {
+          const count = slotCounts[slotIdx];
+          const timeVal = slots[slotIdx];
+          for (let i = 0; i < count; i++) {
+            if (curIdx >= N) break;
+            const targetApp = appList[curIdx];
+            bulkOps.push({
+              updateOne: {
+                filter: { _id: targetApp._id },
+                update: { $set: { exam_time: timeVal } }
+              }
+            });
+            curIdx++;
+            totalAssigned++;
+          }
+        }
+      }
+
+      let modifiedCount = 0;
+      if (bulkOps.length > 0) {
+        for (let i = 0; i < bulkOps.length; i += 1000) {
+          const chunk = bulkOps.slice(i, i + 1000);
+          const result = await col.bulkWrite(chunk, { ordered: false });
+          modifiedCount += result.modifiedCount || 0;
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'تم تقسيم مواعيد المجموعات إلى 4 فترات (نصف ساعة لكل ربع) بنجاح',
+        totalApplicants: applicants.length,
+        totalAssigned,
+        modifiedCount,
+      });
+    }
+
     // ── DELETE /api/:collection/all ────────────────────────────────────────────
     if (req.method === 'DELETE' && segment2 === 'all') {
       const result = await col.deleteMany({});

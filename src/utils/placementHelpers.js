@@ -107,8 +107,16 @@ export const PREFERRED_TIME_OPTIONS = [
   'من 9 إلى 10 مساء',
 ];
 
-// مواعيد اختبار تحديد المستوى المتاحة
+// مواعيد اختبار تحديد المستوى المتاحة (فترات نصف ساعة لكل ربع دارسين وفترات كاملة)
 export const EXAM_TIME_OPTIONS = [
+  '18:00 - 18:30',
+  '18:30 - 19:00',
+  '19:00 - 19:30',
+  '19:30 - 20:00',
+  '20:00 - 20:30',
+  '20:30 - 21:00',
+  '21:00 - 21:30',
+  '21:30 - 22:00',
   '18:00',
   '19:00',
   '20:00',
@@ -245,6 +253,62 @@ export const rescheduleApplicantDay9 = (applicant) => {
 };
 
 /**
+ * تقسيم مواعيد المتقدمين في كل مجموعة (ساعتين) إلى 4 مواعيد (نصف ساعة لكل ربع دارسين)
+ * - المجموعات 1 إلى 20: من 18:00 إلى 20:00 (18:00-18:30, 18:30-19:00, 19:00-19:30, 19:30-20:00)
+ * - المجموعات 21 إلى 40: من 20:00 إلى 22:00 (20:00-20:30, 20:30-21:00, 21:00-21:30, 21:30-22:00)
+ */
+export const splitApplicantsIntoQuarterTimes = (applicants = []) => {
+  if (!Array.isArray(applicants) || applicants.length === 0) return applicants;
+
+  const groupDateMap = new Map();
+  applicants.forEach((app, idx) => {
+    const gNo = Number(app?.group_no);
+    if (!gNo || isNaN(gNo) || gNo < 1 || gNo > 40) return;
+    const d = normalizeExamDate(app?.exam_date) || 'بدون_تاريخ';
+    const key = `${gNo}||${d}`;
+    if (!groupDateMap.has(key)) groupDateMap.set(key, []);
+    groupDateMap.get(key).push(idx);
+  });
+
+  const updated = [...applicants];
+
+  groupDateMap.forEach((indices, key) => {
+    const [gStr] = key.split('||');
+    const gNo = Number(gStr);
+    const slots = (gNo >= 1 && gNo <= 20)
+      ? ['18:00 - 18:30', '18:30 - 19:00', '19:00 - 19:30', '19:30 - 20:00']
+      : ['20:00 - 20:30', '20:30 - 21:00', '21:00 - 21:30', '21:30 - 22:00'];
+
+    const N = indices.length;
+    const q = Math.floor(N / 4);
+    const rem = N % 4;
+    const slotCounts = [
+      q + (rem > 0 ? 1 : 0),
+      q + (rem > 1 ? 1 : 0),
+      q + (rem > 2 ? 1 : 0),
+      q,
+    ];
+
+    let cur = 0;
+    for (let slotIdx = 0; slotIdx < 4; slotIdx++) {
+      const count = slotCounts[slotIdx];
+      const slotTime = slots[slotIdx];
+      for (let i = 0; i < count; i++) {
+        if (cur >= N) break;
+        const appIdx = indices[cur];
+        updated[appIdx] = {
+          ...updated[appIdx],
+          exam_time: slotTime,
+        };
+        cur++;
+      }
+    }
+  });
+
+  return updated;
+};
+
+/**
  * توحيد صيغة توقيت الاختبار إلى HH:MM (يدعم كسور الوقت العشرية من Excel مثل 0.75 -> 18:00)
  */
 export const normalizeExamTime = (val) => {
@@ -285,7 +349,7 @@ const parseMinutes = (timeStr) => {
 /**
  * فحص ظهور رابط اختبار تحديد المستوى للدارس المتقدم:
  * - يختفي الرابط تماماً في غير يوم الاختبار الخاص بالدارس
- * - في يوم الاختبار: يظهر قبل توقيت الاختبار بـ 15 دقيقة ويختفي بعده بـ 30 دقيقة
+ * - في يوم الاختبار: يظهر قبل توقيت الاختبار بـ 15 دقيقة ويختفي بعده بـ 15 دقيقة
  */
 export const getApplicantExamJoinState = (applicant, group = null, now = new Date()) => {
   if (!applicant) return { visible: false, open: false, reason: 'لا توجد بيانات متقدم' };
@@ -306,14 +370,18 @@ export const getApplicantExamJoinState = (applicant, group = null, now = new Dat
 
   const groupTimeStart = !isLegacyDefaultGroupShift(group) ? normalizeExamTime(group?.time_start) : '';
   const examTimeStr = normalizeExamTime(applicant.exam_time) || groupTimeStart || '';
-  const examMinutes = parseMinutes(examTimeStr);
-  if (examMinutes === null) {
+
+  const rangeMatch = examTimeStr.match(/^(\d{1,2}[:.]\d{2})\s*-\s*(\d{1,2}[:.]\d{2})$/);
+  const examStartMinutes = parseMinutes(rangeMatch ? rangeMatch[1] : examTimeStr);
+  const examEndMinutes = rangeMatch ? parseMinutes(rangeMatch[2]) : (examStartMinutes !== null ? examStartMinutes + 30 : null);
+
+  if (examStartMinutes === null) {
     return { visible: true, open: true, reason: '' };
   }
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const openFrom = examMinutes - 15; // قبل الموعد بربع ساعة
-  const closeAt = examMinutes + 30;  // بعد الموعد بنصف ساعة
+  const openFrom = examStartMinutes - 15; // قبل بداية الموعد بربع ساعة
+  const closeAt = (examEndMinutes !== null ? examEndMinutes : examStartMinutes) + 15; // بعد نهاية الموعد بربع ساعة
 
   if (currentMinutes < openFrom) {
     return {
@@ -334,7 +402,23 @@ export const getApplicantExamJoinState = (applicant, group = null, now = new Dat
 };
 
 export const formatTime12Ar = (timeStr) => {
-  const mins = parseMinutes(timeStr);
+  if (!timeStr) return '-';
+  const clean = normalizeExamTime(timeStr);
+  const rangeMatch = clean.match(/^(\d{1,2}[:.]\d{2})\s*-\s*(\d{1,2}[:.]\d{2})$/);
+  if (rangeMatch) {
+    const formatSingle = (str) => {
+      const mins = parseMinutes(str);
+      if (mins === null) return str;
+      let h = Math.floor(mins / 60);
+      const m = String(mins % 60).padStart(2, '0');
+      const period = h >= 12 ? 'م' : 'ص';
+      h = h % 12 || 12;
+      return `${String(h).padStart(2, '0')}:${m} ${period}`;
+    };
+    return `من ${formatSingle(rangeMatch[1])} إلى ${formatSingle(rangeMatch[2])}`;
+  }
+
+  const mins = parseMinutes(clean);
   if (mins === null) return timeStr || '-';
   let h = Math.floor(mins / 60);
   const m = String(mins % 60).padStart(2, '0');
@@ -377,8 +461,10 @@ export const buildExamSheetsByGroupAndCoordinator = (
   placementGroups = [],
   options = {}
 ) => {
-  // ترحيل أي دارس ما زال يحمل تاريخ 9 تلقائياً لحمايته في الكشوف
-  const effectiveApplicants = (applicants || []).map(rescheduleApplicantDay9);
+  // ترحيل أي دارس ما زال يحمل تاريخ 9 تلقائياً وتقسيم المواعيد لـ 4 فترات نصف ساعة
+  const effectiveApplicants = splitApplicantsIntoQuarterTimes(
+    (applicants || []).map(rescheduleApplicantDay9)
+  );
   const {
     targetGroupNo = '',
     targetCoordinator = '',
@@ -555,7 +641,7 @@ export const printPlacementExamSheets = (sheets = []) => {
           <td class="col-level">${escapeHtml(testedLevel)}</td>
           <td class="col-surah">${escapeHtml(stoppedSurah)}</td>
           <td class="col-days">${escapeHtml(prefDays)}</td>
-          <td class="col-time">${escapeHtml(prefTime)}</td>
+          <td class="col-time">${escapeHtml(a.exam_time ? formatTime12Ar(a.exam_time) : prefTime)}</td>
         </tr>
       `;
     }

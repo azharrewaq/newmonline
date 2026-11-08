@@ -11,7 +11,7 @@ import {
 } from '../utils/apiService';
 import { setActiveSubstitutions } from '../utils/userScopeHelper';
 import { findStudentRecord, getStudentsOfSession, toLocalDateStr } from '../utils/sessionHelpers';
-import { createDefaultPlacementGroups, normalizeExamDate, normalizeExamTime, rescheduleApplicantDay9 } from '../utils/placementHelpers';
+import { createDefaultPlacementGroups, normalizeExamDate, normalizeExamTime, rescheduleApplicantDay9, splitApplicantsIntoQuarterTimes } from '../utils/placementHelpers';
 
 const AppDataContext = createContext(null);
 
@@ -2781,7 +2781,7 @@ export function AppDataProvider({ children }) {
       platformMohfezs, addPlatformMohfez, updatePlatformMohfez, deletePlatformMohfez, deleteAllPlatformMohfezs,
       platformSessions, addPlatformSession, updatePlatformSession, deletePlatformSession, deleteAllPlatformSessions,
       platformStudents, addPlatformStudent, updatePlatformStudent, deletePlatformStudent, deleteAllPlatformStudents, bulkImportPlatformStudents,
-      platformApplicants, addPlatformApplicant, updatePlatformApplicant, deletePlatformApplicant, deleteAllPlatformApplicants, bulkImportPlatformApplicants, refreshPlatformApplicants,
+      platformApplicants, setPlatformApplicants, addPlatformApplicant, updatePlatformApplicant, deletePlatformApplicant, deleteAllPlatformApplicants, bulkImportPlatformApplicants, refreshPlatformApplicants,
       placementGroups, updatePlacementGroup,
       platformRowaqs, addPlatformRowaq, updatePlatformRowaq, deletePlatformRowaq,
 

@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { quranSurahs } from '../data/quranSurahs';
 import { countriesList } from '../data/countries';
 import egyptCenters from '../data/egyptCenters';
+import { formatTime12Ar } from './placementHelpers';
 
 // Avoid Vite/ESM bundling issues where XLSX properties might be nested under default
 const xlsxLib = XLSX && XLSX.utils ? XLSX : (XLSX[String('default')] || XLSX);
@@ -103,7 +104,20 @@ const buildLookupCatalog = () => {
     {
       title: 'توقيت الاختبار',
       matchHeaders: ['توقيت الاختبار'],
-      values: ['18:00', '19:00', '20:00', '21:00'],
+      values: [
+        '18:00 - 18:30',
+        '18:30 - 19:00',
+        '19:00 - 19:30',
+        '19:30 - 20:00',
+        '20:00 - 20:30',
+        '20:30 - 21:00',
+        '21:00 - 21:30',
+        '21:30 - 22:00',
+        '18:00',
+        '19:00',
+        '20:00',
+        '21:00',
+      ],
     },
     {
       title: 'أرقام الحلقات الأصلية',
@@ -509,7 +523,7 @@ export function exportExamSheetsToXLSX(
           a.tested_level || '',
           a.stopped_surah || '',
           a.preferred_days || '',
-          a.preferred_time || '',
+          a.exam_time ? formatTime12Ar(a.exam_time) : (a.preferred_time || ''),
         ]);
       }
 

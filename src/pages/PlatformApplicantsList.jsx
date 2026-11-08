@@ -29,11 +29,13 @@ import {
   buildExamSheetsByGroupAndCoordinator,
   printPlacementExamSheets,
   rescheduleApplicantDay9,
+  splitApplicantsIntoQuarterTimes,
 } from '../utils/placementHelpers';
 
 function PlatformApplicantsList() {
   const {
     platformApplicants = [],
+    setPlatformApplicants,
     deletePlatformApplicant,
     updatePlatformApplicant,
     deleteAllPlatformApplicants,
@@ -56,6 +58,7 @@ function PlatformApplicantsList() {
 
   const [activeTab, setActiveTab] = useState('applicants'); // applicants | groups | compatible
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSplitting, setIsSplitting] = useState(false);
 
   // تصحيح فوري لأي متقدمين ما زالوا يحملون تاريخ 9 نوفمبر في الذاكرة المحلية
   useEffect(() => {
@@ -450,6 +453,46 @@ function PlatformApplicantsList() {
     }
   };
 
+  // تقسيم مواعيد اختبار كل مجموعة (ساعتين) إلى 4 مواعيد بالتساوي (نصف ساعة لكل ربع دارسين)
+  const handleSplitQuarterTimes = async () => {
+    if (!window.confirm(
+      'هل تريد تقسيم مواعيد اختبار كل مجموعة (ساعتين) إلى 4 مواعيد بالتساوي (نصف ساعة لكل ربع من الدارسين)؟\n\n' +
+      '• المجموعات من 1 إلى 20:\n' +
+      '  - الربع الأول: 06:00 م - 06:30 م\n' +
+      '  - الربع الثاني: 06:30 م - 07:00 م\n' +
+      '  - الربع الثالث: 07:00 م - 07:30 م\n' +
+      '  - الربع الرابع: 07:30 م - 08:00 م\n\n' +
+      '• المجموعات من 21 إلى 40:\n' +
+      '  - الربع الأول: 08:00 م - 08:30 م\n' +
+      '  - الربع الثاني: 08:30 م - 09:00 م\n' +
+      '  - الربع الثالث: 09:00 م - 09:30 م\n' +
+      '  - الربع الرابع: 09:30 م - 10:00 م'
+    )) return;
+
+    setIsSplitting(true);
+    try {
+      const res = await platformApplicantsAPI.splitGroupTimes();
+      const updated = splitApplicantsIntoQuarterTimes(platformApplicants);
+      if (typeof setPlatformApplicants === 'function') {
+        setPlatformApplicants(updated);
+      }
+      localStorage.setItem('platformApplicants', JSON.stringify(updated));
+      alert(`تم تقسيم مواعيد المجموعات بنجاح في قاعدة البيانات!\nعدد الدارسين الذين تم تعيين المواعيد لهم: ${res.totalAssigned || updated.length} دارساً`);
+      if (typeof refreshPlatformApplicants === 'function') {
+        await refreshPlatformApplicants();
+      }
+    } catch (err) {
+      const updated = splitApplicantsIntoQuarterTimes(platformApplicants);
+      if (typeof setPlatformApplicants === 'function') {
+        setPlatformApplicants(updated);
+      }
+      localStorage.setItem('platformApplicants', JSON.stringify(updated));
+      alert('تم تطبيق تقسيم المواعيد محلياً بنجاح!');
+    } finally {
+      setIsSplitting(false);
+    }
+  };
+
   // تحديث البيانات يدوياً من السيرفر مباشرة
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
@@ -468,8 +511,8 @@ function PlatformApplicantsList() {
   // تصدير جدول المتقدمين الحالي إلى Excel
   const handleExport = () => {
     if (hideStudentPhone) return;
-    const exportData = filtered.map(rawA => {
-      const a = rescheduleApplicantDay9(rawA);
+    const effectiveList = splitApplicantsIntoQuarterTimes(filtered.map(rescheduleApplicantDay9));
+    const exportData = effectiveList.map(a => {
       const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
       return {
         'الاسم': a.name || '',
@@ -489,7 +532,7 @@ function PlatformApplicantsList() {
         'المحفظ': a.mohfez || grp?.mohfez || '',
         'المنسق': a.coordinator || grp?.coordinator || '',
         'تاريخ الاختبار': normalizeExamDate(a.exam_date) || '',
-        'توقيت الاختبار': normalizeExamTime(a.exam_time) || grp?.time_start || '',
+        'توقيت الاختبار': a.exam_time || normalizeExamTime(a.exam_time) || grp?.time_start || '',
         'رابط تيمز': a.teams_link || grp?.teams_link || '',
       };
     });
@@ -1032,6 +1075,15 @@ function PlatformApplicantsList() {
                     style={{ backgroundColor: 'rgba(212, 175, 55, 0.18)', borderColor: 'var(--accent-gold)', fontWeight: 'bold' }}
                   >
                     <Calendar size={16} /> ترحيل يوم 9 لما بعد اليوم الأخير
+                  </button>
+                  <button
+                    className="btn btn-gold-outline"
+                    onClick={handleSplitQuarterTimes}
+                    disabled={isSplitting}
+                    title="تقسيم مواعيد اختبار الدارسين في كل مجموعة (ساعتين) إلى 4 مواعيد بالتساوي (نصف ساعة لكل ربع دارسين)"
+                    style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: '#3b82f6', fontWeight: 'bold' }}
+                  >
+                    <Clock size={16} /> {isSplitting ? 'جارٍ تقسيم المواعيد...' : 'تقسيم مواعيد المجموعات (نصف ساعة)'}
                   </button>
                   <button className="btn btn-gold-outline" onClick={() => importRef.current.click()}>
                     <Upload size={16} /> استيراد من إكسيل

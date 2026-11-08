@@ -14,6 +14,7 @@ import {
   PREFERRED_DAYS_OPTIONS,
   PREFERRED_TIME_OPTIONS,
   EXAM_TIME_OPTIONS,
+  formatTime12Ar,
   normalizeExamDate,
   normalizeExamTime,
   isLegacyDefaultGroupShift,
@@ -376,7 +377,11 @@ function PlatformApplicantsCreate() {
             <label>توقيت الاختبار (يظهر الرابط قبله بـ 15 د وبعده بـ 30 د)</label>
             <select name="exam_time" className="form-select" value={String(form.exam_time || '').replace('.', ':')} onChange={handleChange} dir="ltr">
               <option value="">--- اختر توقيت الاختبار ---</option>
-              {EXAM_TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+              {EXAM_TIME_OPTIONS.map(t => (
+                <option key={t} value={t}>
+                  {t.includes('-') ? `${t} (${formatTime12Ar(t)})` : `${t} (${formatTime12Ar(t)})`}
+                </option>
+              ))}
             </select>
           </div>
 
