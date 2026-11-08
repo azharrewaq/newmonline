@@ -517,12 +517,13 @@ function PlatformApplicantsList() {
     }
   };
 
-  // تصدير جدول المتقدمين الحالي إلى Excel
+  // تصدير جدول المتقدمين الحالي إلى Excel (متطابق 100% مع ترتيب وتوقيتات الموقع المعروضة)
   const handleExport = () => {
     if (hideStudentPhone) return;
-    const effectiveList = splitApplicantsIntoQuarterTimes(filtered.map(rescheduleApplicantDay9));
+    const effectiveList = sortedFiltered;
     const exportData = effectiveList.map(a => {
       const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
+      const displayExamTime = a.exam_time ? formatTime12Ar(a.exam_time) : (getGroupTimeLabel(grp, [a]) || '');
       return {
         'الاسم': a.name || '',
         'الرقم القومي أو جواز السفر': a.national_id || a.passport_no || '',
@@ -541,7 +542,7 @@ function PlatformApplicantsList() {
         'المحفظ': a.mohfez || grp?.mohfez || '',
         'المنسق': a.coordinator || grp?.coordinator || '',
         'تاريخ الاختبار': normalizeExamDate(a.exam_date) || '',
-        'توقيت الاختبار': a.exam_time || normalizeExamTime(a.exam_time) || grp?.time_start || '',
+        'توقيت الاختبار': displayExamTime,
         'رابط تيمز': a.teams_link || grp?.teams_link || '',
       };
     });

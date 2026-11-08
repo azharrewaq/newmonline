@@ -255,6 +255,17 @@ export const rescheduleApplicantDay9 = (applicant) => {
 export const splitApplicantsIntoQuarterTimes = (applicants = []) => {
   if (!Array.isArray(applicants) || applicants.length === 0) return applicants;
 
+  const validSlots = ['18:00 - 18:30', '18:30 - 19:00', '19:00 - 19:30', '19:30 - 20:00'];
+
+  // إذا كان جميع المتقدمين لديهم بالفعل توقيت مقسم ومعتمد، لا حاجة لإعادة التوزيع
+  const needsSplit = applicants.some(a => {
+    const tm = normalizeExamTime(a?.exam_time);
+    return !tm || !validSlots.includes(tm);
+  });
+  if (!needsSplit) {
+    return applicants;
+  }
+
   const groupDateMap = new Map();
   applicants.forEach((app, idx) => {
     const gNo = Number(app?.group_no);
@@ -268,8 +279,14 @@ export const splitApplicantsIntoQuarterTimes = (applicants = []) => {
   const updated = [...applicants];
 
   groupDateMap.forEach((indices) => {
-    // جميع المجموعات (من 1 إلى 40) مواعيدها من 6 إلى 8 مساءً مقسمة لـ 4 فترات متساوية
-    const slots = ['18:00 - 18:30', '18:30 - 19:00', '19:00 - 19:30', '19:30 - 20:00'];
+    // ترتيب ثابت لضمان عدم تغير التوزيع عند اختلاف ترتيب العناصر
+    indices.sort((i1, i2) => {
+      const a = applicants[i1];
+      const b = applicants[i2];
+      const aNid = String(a?.national_id || a?.passport_no || a?.id || a?.name || '');
+      const bNid = String(b?.national_id || b?.passport_no || b?.id || b?.name || '');
+      return aNid.localeCompare(bNid);
+    });
 
     const N = indices.length;
     const q = Math.floor(N / 4);
@@ -284,14 +301,18 @@ export const splitApplicantsIntoQuarterTimes = (applicants = []) => {
     let cur = 0;
     for (let slotIdx = 0; slotIdx < 4; slotIdx++) {
       const count = slotCounts[slotIdx];
-      const slotTime = slots[slotIdx];
+      const slotTime = validSlots[slotIdx];
       for (let i = 0; i < count; i++) {
         if (cur >= N) break;
         const appIdx = indices[cur];
-        updated[appIdx] = {
-          ...updated[appIdx],
-          exam_time: slotTime,
-        };
+        // إذا كان المتقدم يمتلك بالفعل توقيتاً معتمداً نحافظ عليه، وإلا نسند إليه الفترة
+        const existingTm = normalizeExamTime(updated[appIdx]?.exam_time);
+        if (!validSlots.includes(existingTm)) {
+          updated[appIdx] = {
+            ...updated[appIdx],
+            exam_time: slotTime,
+          };
+        }
         cur++;
       }
     }
