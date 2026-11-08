@@ -1,8 +1,8 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search, Plus, Download, Upload, Trash2, Edit, Video,
-  Users, Layers, GitMerge, Clock, Calendar, Printer
+  Users, Layers, GitMerge, Clock, Calendar, Printer, RefreshCw
 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
@@ -28,6 +28,7 @@ import {
   getGroupTimeLabel,
   buildExamSheetsByGroupAndCoordinator,
   printPlacementExamSheets,
+  rescheduleApplicantDay9,
 } from '../utils/placementHelpers';
 
 function PlatformApplicantsList() {
@@ -37,6 +38,7 @@ function PlatformApplicantsList() {
     updatePlatformApplicant,
     deleteAllPlatformApplicants,
     bulkImportPlatformApplicants,
+    refreshPlatformApplicants,
     placementGroups = [],
     updatePlacementGroup,
     platformSupervisors = [],
@@ -53,6 +55,18 @@ function PlatformApplicantsList() {
   const isAdminOrSupervisor = ['admin', 'platform_admin', 'platform_supervisor'].includes(role);
 
   const [activeTab, setActiveTab] = useState('applicants'); // applicants | groups | compatible
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // تصحيح فوري لأي متقدمين ما زالوا يحملون تاريخ 9 نوفمبر في الذاكرة المحلية
+  useEffect(() => {
+    const hasDay9 = platformApplicants.some(a => {
+      const d = normalizeExamDate(a.exam_date);
+      return d === '2026-11-09' || d === '46335';
+    });
+    if (hasDay9 && typeof refreshPlatformApplicants === 'function') {
+      refreshPlatformApplicants().catch(err => console.error('Auto-refresh Day 9 error:', err));
+    }
+  }, [platformApplicants, refreshPlatformApplicants]);
 
   // حالة تسكين مشرف لعدد من المجموعات دفعة واحدة
   const [bulkSupType, setBulkSupType] = useState('scientific_supervisor'); // scientific_supervisor | technical_supervisor
@@ -436,10 +450,26 @@ function PlatformApplicantsList() {
     }
   };
 
+  // تحديث البيانات يدوياً من السيرفر مباشرة
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      if (typeof refreshPlatformApplicants === 'function') {
+        await refreshPlatformApplicants();
+      }
+      alert('تم تحديث البيانات من قاعدة البيانات بنجاح!');
+    } catch (err) {
+      alert('فشل تحديث البيانات من السيرفر: ' + err.message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   // تصدير جدول المتقدمين الحالي إلى Excel
   const handleExport = () => {
     if (hideStudentPhone) return;
-    const exportData = filtered.map(a => {
+    const exportData = filtered.map(rawA => {
+      const a = rescheduleApplicantDay9(rawA);
       const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
       return {
         'الاسم': a.name || '',
@@ -1028,6 +1058,16 @@ function PlatformApplicantsList() {
                   <Download size={16} /> تصدير
                 </button>
               )}
+              <button
+                className="btn btn-outline"
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                title="مزامنة فورية وتحديث بيانات المتقدمين والمجموعات من السيرفر مباشرة"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
+                {isRefreshing ? 'جارٍ التحديث...' : 'تحديث البيانات من السيرفر'}
+              </button>
             </div>
             <div className="table-stats">
               إجمالي النتائج ({filtered.length}) — صفحة {currentPage} من {totalPages}

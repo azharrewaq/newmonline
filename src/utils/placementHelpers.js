@@ -224,6 +224,27 @@ export const formatExamDateAr = (val) => {
 };
 
 /**
+ * ترحيل مواعيد دارسي يوم 9 نوفمبر لما بعد اليوم الأخير لكل مجموعة
+ */
+export const rescheduleApplicantDay9 = (applicant) => {
+  if (!applicant) return applicant;
+  const d = normalizeExamDate(applicant.exam_date);
+  if (d !== '2026-11-09' && d !== '46335') {
+    return applicant;
+  }
+  const g = Number(applicant.group_no);
+  let newDate = '2026-11-14';
+  if ((g >= 1 && g <= 2) || (g >= 31 && g <= 40)) {
+    newDate = '2026-11-14';
+  } else if ((g >= 3 && g <= 5) || (g >= 11 && g <= 20)) {
+    newDate = '2026-11-13';
+  } else if ((g >= 6 && g <= 10) || (g >= 21 && g <= 22)) {
+    newDate = '2026-11-15';
+  }
+  return { ...applicant, exam_date: newDate };
+};
+
+/**
  * توحيد صيغة توقيت الاختبار إلى HH:MM (يدعم كسور الوقت العشرية من Excel مثل 0.75 -> 18:00)
  */
 export const normalizeExamTime = (val) => {
@@ -356,6 +377,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
   placementGroups = [],
   options = {}
 ) => {
+  // ترحيل أي دارس ما زال يحمل تاريخ 9 تلقائياً لحمايته في الكشوف
+  const effectiveApplicants = (applicants || []).map(rescheduleApplicantDay9);
   const {
     targetGroupNo = '',
     targetCoordinator = '',
@@ -372,7 +395,7 @@ export const buildExamSheetsByGroupAndCoordinator = (
   // إذا طُلب طباعة مجموعة محددة حتى لو كانت فارغة من الدارسين حالياً
   if (targetGroupNo) {
     const grp = placementGroups.find(g => String(g.group_no) === String(targetGroupNo));
-    let groupApplicants = applicants.filter(a => String(a.group_no || '') === String(targetGroupNo));
+    let groupApplicants = effectiveApplicants.filter(a => String(a.group_no || '') === String(targetGroupNo));
     if (normTargetDate) {
       groupApplicants = groupApplicants.filter(a => normalizeExamDate(a.exam_date) === normTargetDate);
     }
@@ -423,8 +446,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
 
   // تصفية حسب اليوم المحدد في حال اختيار كل المجموعات ليوم معين
   const sourceApplicants = normTargetDate
-    ? applicants.filter(a => normalizeExamDate(a.exam_date) === normTargetDate)
-    : applicants;
+    ? effectiveApplicants.filter(a => normalizeExamDate(a.exam_date) === normTargetDate)
+    : effectiveApplicants;
 
   // إذا كان هناك دارسون، نقسمهم إلى كشف مستقل لكل (مجموعة + منسق) أو (+ يوم)
   if (sourceApplicants.length > 0) {
