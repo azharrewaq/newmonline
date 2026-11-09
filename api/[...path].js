@@ -480,14 +480,6 @@ export default async function handler(req, res) {
         return res.status(200).json(consolidatedDocs);
       }
 
-      const acceptEncoding = String(req.headers['accept-encoding'] || '');
-      const jsonStr = JSON.stringify(docs);
-      if (acceptEncoding.includes('gzip') && jsonStr.length > 2048) {
-        const compressed = zlib.gzipSync(Buffer.from(jsonStr, 'utf-8'));
-        res.setHeader('Content-Encoding', 'gzip');
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        return res.status(200).end(compressed);
-      }
       return res.status(200).json(docs);
     }
 
