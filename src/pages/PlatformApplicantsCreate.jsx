@@ -43,6 +43,28 @@ function PlatformApplicantsCreate() {
   const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
   const role = currentUser?.role || 'admin';
   const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
+  const isAdminOrSupervisor = ['admin', 'platform_admin', 'platform_supervisor'].includes(role);
+  const isCoordinator = role === 'platform_coordinator' || role === 'coordinator' ||
+    (placementGroups || []).some(g => {
+      const uName = (currentUser?.name || '').trim();
+      return uName && ((g.coordinator && (g.coordinator || '').trim() === uName) || (g.technical_supervisor && (g.technical_supervisor || '').trim() === uName));
+    });
+
+  const myGroupNumbers = (() => {
+    if (isAdminOrSupervisor) return null;
+    const uName = (currentUser?.name || '').trim();
+    const nums = new Set();
+    (placementGroups || []).forEach(g => {
+      if (isCoordinator && (
+        (g.coordinator && (g.coordinator || '').trim() === uName) ||
+        (g.technical_supervisor && (g.technical_supervisor || '').trim() === uName)
+      )) {
+        nums.add(Number(g.group_no));
+      }
+    });
+    return nums;
+  })();
+
   const isScientificSupervisor = (() => {
     if (role === 'admin' || role === 'platform_admin') return false;
     if (isMohfez) return true;
@@ -340,24 +362,28 @@ function PlatformApplicantsCreate() {
             <select name="group_no" className="form-select" value={form.group_no} onChange={handleChange}>
               <option value="">--- بدون مجموعة حالياً ---</option>
               <optgroup label="المجموعات 1 - 20">
-                {placementGroups.filter(g => g.group_no <= 20).map(g => {
-                  const lbl = getGroupTimeLabel(g);
-                  return (
-                    <option key={g.group_no} value={g.group_no}>
-                      مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''}{lbl ? ` — ${lbl}` : ''}
-                    </option>
-                  );
-                })}
+                {placementGroups
+                  .filter(g => g.group_no <= 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
+                  .map(g => {
+                    const lbl = getGroupTimeLabel(g);
+                    return (
+                      <option key={g.group_no} value={g.group_no}>
+                        مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''}{lbl ? ` — ${lbl}` : ''}
+                      </option>
+                    );
+                  })}
               </optgroup>
               <optgroup label="المجموعات 21 - 40">
-                {placementGroups.filter(g => g.group_no > 20).map(g => {
-                  const lbl = getGroupTimeLabel(g);
-                  return (
-                    <option key={g.group_no} value={g.group_no}>
-                      مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''}{lbl ? ` — ${lbl}` : ''}
-                    </option>
-                  );
-                })}
+                {placementGroups
+                  .filter(g => g.group_no > 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
+                  .map(g => {
+                    const lbl = getGroupTimeLabel(g);
+                    return (
+                      <option key={g.group_no} value={g.group_no}>
+                        مجموعة {g.group_no} {g.mohfez ? `(${g.mohfez})` : ''}{lbl ? ` — ${lbl}` : ''}
+                      </option>
+                    );
+                  })}
               </optgroup>
             </select>
           </div>

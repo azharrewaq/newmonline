@@ -472,14 +472,23 @@ export function exportExamSheetsToXLSX(
     ];
 
     sheets.forEach((sheet, idx) => {
+      const isBefore = sheet.examStage === 'BEFORE' || sheet.blankResults;
+      const isAfter = sheet.examStage === 'AFTER';
       const totalRows = Math.max(sheet.rows?.length || 0, sheet.padCount || 25);
       const groupDisplay =
         sheet.groupNo && sheet.groupNo !== 'غير مسكن'
           ? `مجموعة (${sheet.groupNo})${sheet.shiftLabel ? ` - ${sheet.shiftLabel}` : ''}`
           : 'غير محدد';
 
+      let titleHeader = 'الجامع الأزهر - إدارة شئون الأروقة - كشف تحديد مستوى المنصة المحلية بالجامع الأزهر نوفمبر 2026';
+      if (isBefore) {
+        titleHeader = 'الجامع الأزهر - إدارة شئون الأروقة - كشف لجنة اختبار تحديد المستوى — نموذج الرصد (قبل الاختبار)';
+      } else if (isAfter) {
+        titleHeader = 'الجامع الأزهر - إدارة شئون الأروقة - كشف نتائج تحديد المستوى والرصد النهائي (بعد الاختبار)';
+      }
+
       const aoa = [
-        ['الجامع الأزهر - إدارة شئون الأروقة - كشف تحديد مستوى المنصة المحلية بالجامع الأزهر نوفمبر 2026'],
+        [titleHeader],
         [
           `المجموعة: ${groupDisplay}`,
           '',
@@ -502,25 +511,27 @@ export function exportExamSheetsToXLSX(
       for (let i = 0; i < totalRows; i++) {
         const a = sheet.rows?.[i] || {};
         const excelRow = i + 4; // الصف الأول للبيانات هو الصف رقم 4 في الإكسيل
-        const qVals = [a.q1, a.q2, a.q3, a.q4, a.q5]
+        const qVals = isBefore ? [] : [a.q1, a.q2, a.q3, a.q4, a.q5]
           .map(v => (v === '' || v === null || v === undefined ? NaN : Number(v)))
           .filter(v => !isNaN(v));
-        const totalCell = qVals.length > 0
-          ? { t: 'n', v: qVals.reduce((s, v) => s + v, 0), f: `IF(COUNT(D${excelRow}:H${excelRow})=0,"",SUM(D${excelRow}:H${excelRow}))` }
-          : { t: 's', v: '', f: `IF(COUNT(D${excelRow}:H${excelRow})=0,"",SUM(D${excelRow}:H${excelRow}))` };
+        const totalCell = isBefore
+          ? { t: 's', v: '', f: `IF(COUNT(D${excelRow}:H${excelRow})=0,"",SUM(D${excelRow}:H${excelRow}))` }
+          : (qVals.length > 0
+              ? { t: 'n', v: qVals.reduce((s, v) => s + v, 0), f: `IF(COUNT(D${excelRow}:H${excelRow})=0,"",SUM(D${excelRow}:H${excelRow}))` }
+              : { t: 's', v: '', f: `IF(COUNT(D${excelRow}:H${excelRow})=0,"",SUM(D${excelRow}:H${excelRow}))` });
         aoa.push([
           i + 1,
           a.name || '',
           a.national_id || a.passport_no || '',
-          a.q1 ?? '',
-          a.q2 ?? '',
-          a.q3 ?? '',
-          a.q4 ?? '',
-          a.q5 ?? '',
+          isBefore ? '' : (a.q1 ?? ''),
+          isBefore ? '' : (a.q2 ?? ''),
+          isBefore ? '' : (a.q3 ?? ''),
+          isBefore ? '' : (a.q4 ?? ''),
+          isBefore ? '' : (a.q5 ?? ''),
           totalCell,
           a.rowaq || '',
-          a.tested_level || '',
-          a.stopped_surah || '',
+          isBefore ? '' : (a.tested_level || ''),
+          isBefore ? '' : (a.stopped_surah || ''),
           a.preferred_days || '',
           a.exam_time ? formatTime12Ar(a.exam_time) : (a.preferred_time || ''),
         ]);

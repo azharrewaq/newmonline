@@ -57,8 +57,16 @@ function PlatformApplicantsList() {
   const currentUser = useMemo(() => JSON.parse(sessionStorage.getItem('currentUser') || 'null'), []);
   const role = currentUser?.role || 'admin';
   const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
-  const isCoordinator = role === 'platform_coordinator';
   const isSupervisor = role === 'platform_supervisor';
+  const isCoordinator = useMemo(() => {
+    if (role === 'platform_coordinator' || role === 'coordinator') return true;
+    const uName = normalizeArabic(currentUser?.name || '');
+    if (!uName) return false;
+    return placementGroups.some(g =>
+      (g.coordinator && normalizeArabic(g.coordinator) === uName) ||
+      (g.technical_supervisor && normalizeArabic(g.technical_supervisor) === uName)
+    );
+  }, [role, currentUser, placementGroups]);
   const isAdminOrSupervisor = ['admin', 'platform_admin', 'platform_supervisor'].includes(role);
 
   const [activeTab, setActiveTab] = useState('applicants'); // applicants | groups | compatible
@@ -122,6 +130,7 @@ function PlatformApplicantsList() {
   // خيارات الطباعة والتصدير (اختيار المجموعة واليوم أو المجموعة كاملة)
   const [printGroupNo, setPrintGroupNo] = useState('');
   const [printDateMode, setPrintDateMode] = useState('ALL'); // 'ALL' | 'SPLIT_BY_DATE' | 'CUSTOM' | 'YYYY-MM-DD'
+  const [printExamStage, setPrintExamStage] = useState('ALL'); // 'ALL' | 'BEFORE' | 'AFTER'
   const [printCustomDate, setPrintCustomDate] = useState('');
   const [groupRowDateMap, setGroupRowDateMap] = useState({}); // { [group_no]: 'ALL' | 'SPLIT_BY_DATE' | 'YYYY-MM-DD' }
 
@@ -392,9 +401,16 @@ function PlatformApplicantsList() {
           ? ''
           : printDateMode; // 'SPLIT_BY_DATE' أو تاريخ محدد YYYY-MM-DD
 
-    const baseApplicants = effectiveGroupNo
+    let baseApplicants = effectiveGroupNo
       ? platformApplicants.filter(a => String(a.group_no || '') === String(effectiveGroupNo))
       : filtered;
+
+    if (printExamStage === 'AFTER') {
+      const testedApplicants = baseApplicants.filter(a => a.tested_level || a.status === 'تم تحديد المستوى');
+      if (testedApplicants.length > 0) {
+        baseApplicants = testedApplicants;
+      }
+    }
 
     return buildExamSheetsByGroupAndCoordinator(baseApplicants, placementGroups, {
       targetGroupNo: effectiveGroupNo,
@@ -402,6 +418,8 @@ function PlatformApplicantsList() {
       targetDate: resolvedDate,
       splitByDate: printDateMode === 'SPLIT_BY_DATE',
       padToCapacity: Boolean(effectiveGroupNo),
+      examStage: printExamStage,
+      blankResults: printExamStage === 'BEFORE',
     });
   };
 
@@ -1364,6 +1382,20 @@ function PlatformApplicantsList() {
                 </select>
               </div>
 
+              <div className="form-group" style={{ minWidth: 200, marginBottom: 0 }}>
+                <label style={{ fontSize: 13 }}>حالة الكشف (قبل / بعد الاختبار)</label>
+                <select
+                  className="form-select"
+                  style={{ padding: '8px 12px', fontSize: 13 }}
+                  value={printExamStage}
+                  onChange={e => setPrintExamStage(e.target.value)}
+                >
+                  <option value="ALL">كامل الكشف (البيانات المسجلة)</option>
+                  <option value="BEFORE">قبل الاختبار (نموذج لجنة الامتحان - خانات النتيجة فارغة)</option>
+                  <option value="AFTER">بعد الاختبار (كشف نتائج تحديد المستوى والرصد)</option>
+                </select>
+              </div>
+
               {printDateMode === 'CUSTOM' && (
                 <div className="form-group" style={{ width: 170, marginBottom: 0 }}>
                   <label style={{ fontSize: 13 }}>التاريخ المحدد</label>
@@ -1388,11 +1420,13 @@ function PlatformApplicantsList() {
 
           <div className="table-controls" style={{ justifyContent: 'space-between', flexDirection: 'row-reverse' }}>
             <div className="action-buttons" style={{ flexDirection: 'row-reverse' }}>
+              {(isAdminOrSupervisor || isCoordinator) && (
+                <Link to="/platform-applicants/create" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+                  <Plus size={16} /> إضافة متقدم
+                </Link>
+              )}
               {isAdminOrSupervisor && (
                 <>
-                  <Link to="/platform-applicants/create" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-                    <Plus size={16} /> إضافة متقدم
-                  </Link>
                   <button className="btn btn-gold-outline" onClick={() => importRef.current.click()}>
                     <Upload size={16} /> استيراد من إكسيل
                   </button>
@@ -1569,7 +1603,7 @@ function PlatformApplicantsList() {
 
                         {/* المجموعة (1 - 40) */}
                         <td style={{ textAlign: 'center', minWidth: 120 }}>
-                          {isAdminOrSupervisor ? (
+                          {(isAdminOrSupervisor || isCoordinator) ? (
                             <select
                               className="form-select"
                               style={{ padding: '4px 8px', fontSize: 12 }}
@@ -1577,11 +1611,13 @@ function PlatformApplicantsList() {
                               onChange={e => handleInlineUpdate(a, 'group_no', e.target.value)}
                             >
                               <option value="">غير مسكن</option>
-                              {placementGroups.map(g => (
-                                <option key={g.group_no} value={g.group_no}>
-                                  مجموعة {g.group_no}{getGroupTimeLabel(g) ? ` (${getGroupTimeLabel(g)})` : ''}
-                                </option>
-                              ))}
+                              {placementGroups
+                                .filter(g => myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no)))
+                                .map(g => (
+                                  <option key={g.group_no} value={g.group_no}>
+                                    مجموعة {g.group_no}{getGroupTimeLabel(g) ? ` (${getGroupTimeLabel(g)})` : ''}
+                                  </option>
+                                ))}
                             </select>
                           ) : (
                             <span>{a.group_no ? `مجموعة ${a.group_no}` : '-'}</span>
@@ -1611,20 +1647,20 @@ function PlatformApplicantsList() {
                               <Video size={13} /> تيمز
                             </a>
                           )}
+                          {(isAdminOrSupervisor || isCoordinator) && (
+                            <Link
+                              to={`/platform-applicants/create?id=${a.id}`}
+                              className="action-icon edit"
+                              style={{ textDecoration: 'none', color: 'inherit' }}
+                              title="تعديل بيانات الدارس ونتيجته"
+                            >
+                              <Edit size={16} />
+                            </Link>
+                          )}
                           {isAdminOrSupervisor && (
-                            <>
-                              <Link
-                                to={`/platform-applicants/create?id=${a.id}`}
-                                className="action-icon edit"
-                                style={{ textDecoration: 'none', color: 'inherit' }}
-                                title="تعديل"
-                              >
-                                <Edit size={16} />
-                              </Link>
-                              <button className="action-icon delete" title="حذف" onClick={() => deletePlatformApplicant(a.id)}>
-                                <Trash2 size={16} />
-                              </button>
-                            </>
+                            <button className="action-icon delete" title="حذف" onClick={() => deletePlatformApplicant(a.id)}>
+                              <Trash2 size={16} />
+                            </button>
                           )}
                         </td>
                       </tr>

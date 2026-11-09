@@ -483,6 +483,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
     targetDate = '',
     padToCapacity = false,
     splitByDate = false,
+    examStage = 'ALL',
+    blankResults = false,
   } = options;
 
   const normTargetDate = targetDate && targetDate !== 'ALL' && targetDate !== 'SPLIT_BY_DATE'
@@ -518,6 +520,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
           examDate: d === 'بدون تاريخ' ? '' : d,
           rows,
           padCount: padToCapacity ? Math.max(rows.length, PLACEMENT_GROUP_CAPACITY) : Math.max(rows.length, 1),
+          examStage,
+          blankResults,
         }));
     }
 
@@ -539,6 +543,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
       padCount: groupApplicants.length === 0 || padToCapacity
         ? Math.max(groupApplicants.length, PLACEMENT_GROUP_CAPACITY)
         : groupApplicants.length,
+      examStage,
+      blankResults,
     }];
   }
 
@@ -596,6 +602,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
         ...s,
         examDate: examDateLabel,
         padCount: padToCapacity ? Math.max(s.rows.length, PLACEMENT_GROUP_CAPACITY) : Math.max(s.rows.length, 1),
+        examStage,
+        blankResults,
       };
     });
   }
@@ -615,6 +623,8 @@ export const buildExamSheetsByGroupAndCoordinator = (
     examDate: targetDate || '',
     rows: [],
     padCount: PLACEMENT_GROUP_CAPACITY,
+    examStage,
+    blankResults,
   }));
 };
 
@@ -628,26 +638,33 @@ export const printPlacementExamSheets = (sheets = []) => {
   }
 
   const pagesHtml = sheets.map((sheet) => {
+    const isBefore = sheet.examStage === 'BEFORE' || sheet.blankResults;
+    const isAfter = sheet.examStage === 'AFTER';
     const totalRows = Math.max(sheet.rows?.length || 0, sheet.padCount || PLACEMENT_GROUP_CAPACITY);
     let trs = '';
     for (let i = 0; i < totalRows; i++) {
       const a = sheet.rows?.[i] || {};
       const rowaq = normalizeApplicantRowaq(a.rowaq, a.gender) || '';
       const appliedLevel = a.applied_level || a.level || '';
-      const testedLevel = a.tested_level || '';
-      const stoppedSurah = a.stopped_surah || '';
+      const testedLevel = isBefore ? '' : (a.tested_level || '');
+      const stoppedSurah = isBefore ? '' : (a.stopped_surah || '');
       const prefDays = normalizePreferredDays(a.preferred_days) || '';
       const prefTime = a.preferred_time || '';
+      const q1Val = isBefore ? '' : (a.q1 ?? '');
+      const q2Val = isBefore ? '' : (a.q2 ?? '');
+      const q3Val = isBefore ? '' : (a.q3 ?? '');
+      const q4Val = isBefore ? '' : (a.q4 ?? '');
+      const q5Val = isBefore ? '' : (a.q5 ?? '');
       trs += `
         <tr>
           <td class="col-idx">${i + 1}</td>
           <td class="col-name">${escapeHtml(a.name || '')}</td>
           <td class="col-nid" dir="ltr">${escapeHtml(a.national_id || a.passport_no || '')}</td>
-          <td class="col-q">${escapeHtml(a.q1 ?? '')}</td>
-          <td class="col-q">${escapeHtml(a.q2 ?? '')}</td>
-          <td class="col-q">${escapeHtml(a.q3 ?? '')}</td>
-          <td class="col-q">${escapeHtml(a.q4 ?? '')}</td>
-          <td class="col-q">${escapeHtml(a.q5 ?? '')}</td>
+          <td class="col-q">${escapeHtml(q1Val)}</td>
+          <td class="col-q">${escapeHtml(q2Val)}</td>
+          <td class="col-q">${escapeHtml(q3Val)}</td>
+          <td class="col-q">${escapeHtml(q4Val)}</td>
+          <td class="col-q">${escapeHtml(q5Val)}</td>
           <td class="col-q col-total"></td>
           <td class="col-rowaq">${escapeHtml(rowaq)}</td>
           <td class="col-level">${escapeHtml(testedLevel)}</td>
@@ -662,6 +679,13 @@ export const printPlacementExamSheets = (sheets = []) => {
       ? `مجموعة (${escapeHtml(sheet.groupNo)})${sheet.shiftLabel ? ` — ${escapeHtml(sheet.shiftLabel)}` : ''}`
       : '................................';
 
+    let sheetTitle = 'كشف تحديد مستوى المنصة المحلية بالجامع الأزهر نوفمبر 2026';
+    if (isBefore) {
+      sheetTitle = 'كشف لجنة اختبار تحديد المستوى — نموذج الرصد (قبل الاختبار)';
+    } else if (isAfter) {
+      sheetTitle = 'كشف نتائج تحديد المستوى والرصد النهائي (بعد الاختبار)';
+    }
+
     return `
       <section class="print-sheet">
         <header class="sheet-header">
@@ -670,7 +694,7 @@ export const printPlacementExamSheets = (sheets = []) => {
             <div class="org-sub">إدارة شئون الأروقة</div>
           </div>
           <div class="header-center">
-            <h1>كشف تحديد مستوى المنصة المحلية بالجامع الأزهر نوفمبر 2026</h1>
+            <h1>${sheetTitle}</h1>
           </div>
           <div class="header-left">
             <div>التاريخ: ${escapeHtml(sheet.examDate || '    / 11 / 2026')}</div>
