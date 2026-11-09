@@ -1811,27 +1811,114 @@ function PlatformApplicantsList() {
                   تسكين للمجموعات المحددة
                 </button>
               </div>
+
+              {/* أزرار تحديد سريع لكل 10 مجموعات خاصة بمشرف علمي وتقني */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>تحديد سريع لنطاق الـ 10 مجموعات:</span>
+                {[
+                  { label: 'المجموعات 1 إلى 10', from: 1, to: 10 },
+                  { label: 'المجموعات 11 إلى 20', from: 11, to: 20 },
+                  { label: 'المجموعات 21 إلى 30', from: 21, to: 30 },
+                  { label: 'المجموعات 31 إلى 40', from: 31, to: 40 },
+                ].map(p => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    className="btn btn-outline"
+                    style={{
+                      padding: '3px 10px',
+                      fontSize: 12,
+                      ...(bulkFromGroup === p.from && bulkToGroup === p.to ? { borderColor: 'var(--accent-gold)', color: 'var(--accent-gold)', fontWeight: 'bold' } : {})
+                    }}
+                    onClick={() => {
+                      setBulkFromGroup(p.from);
+                      setBulkToGroup(p.to);
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           {[
-            { title: 'المجموعات من 1 إلى 20', min: 1, max: 20, badgeColor: '#3b82f6' },
-            { title: 'المجموعات من 21 إلى 40', min: 21, max: 40, badgeColor: '#10b981' },
+            { title: 'المجموعات من 1 إلى 10', min: 1, max: 10, badgeColor: '#3b82f6' },
+            { title: 'المجموعات من 11 إلى 20', min: 11, max: 20, badgeColor: '#10b981' },
+            { title: 'المجموعات من 21 إلى 30', min: 21, max: 30, badgeColor: '#f59e0b' },
+            { title: 'المجموعات من 31 إلى 40', min: 31, max: 40, badgeColor: '#8b5cf6' },
           ].map(shift => {
             const shiftGroups = placementGroups.filter(g => {
               if (g.group_no < shift.min || g.group_no > shift.max) return false;
               if (myGroupNumbers !== null && !myGroupNumbers.has(Number(g.group_no))) return false;
               return true;
             });
+            if (shiftGroups.length === 0) return null;
+
+            const sciSups = Array.from(new Set(shiftGroups.map(g => g.scientific_supervisor).filter(Boolean)));
+            const techSups = Array.from(new Set(shiftGroups.map(g => g.technical_supervisor).filter(Boolean)));
+            const totalApplicantsInShift = shiftGroups.reduce((acc, g) => {
+              return acc + platformApplicants.filter(a => Number(a.group_no) === Number(g.group_no)).length;
+            }, 0);
+
             return (
               <div key={shift.title} className="box-card" style={{ padding: 20, marginBottom: 24 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, flexWrap: 'wrap', gap: 10 }}>
-                  <h3 style={{ fontSize: 17, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Clock size={18} style={{ color: shift.badgeColor }} /> {shift.title}
-                  </h3>
-                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    سعة كل مجموعة: {PLACEMENT_GROUP_CAPACITY} دارساً يومياً (كل مجموعة لها محفظ ومنسق، ويشرف المشرف العلمي والتقني على عدد من المجموعات)
-                  </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <h3 style={{ fontSize: 17, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <Clock size={18} style={{ color: shift.badgeColor }} /> {shift.title}
+                    </h3>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        color: '#60a5fa',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        padding: '4px 10px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}>
+                        المشرف العلمي: {sciSups.length > 0 ? sciSups.join('، ') : 'غير مسكن بعد'}
+                      </span>
+                      <span style={{
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        padding: '4px 10px',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}>
+                        المشرف التقني: {techSups.length > 0 ? techSups.join('، ') : 'غير مسكن بعد'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      المسكنون في الـ 10 مجموعات: <strong style={{ color: '#fff' }}>{totalApplicantsInShift}</strong> دارس
+                    </span>
+                    {isAdminOrSupervisor && (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        style={{ padding: '4px 10px', fontSize: 12 }}
+                        onClick={() => {
+                          setBulkFromGroup(shift.min);
+                          setBulkToGroup(shift.max);
+                          window.scrollTo({ top: 350, behavior: 'smooth' });
+                        }}
+                      >
+                        تسكين مشرفي هذه الـ 10 مجموعات
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="table-wrapper">
