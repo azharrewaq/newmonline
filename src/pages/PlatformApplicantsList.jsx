@@ -283,10 +283,52 @@ function PlatformApplicantsList() {
     updatePlatformApplicant(applicant.id, patch);
   };
 
+  // فحص صلاحية إدارة مجموعة معينة (الإدارة، المشرف العام، المشرف التقني للمجموعة، أو منسق المجموعة)
+  const canManageGroup = (group, field = null) => {
+    if (!group) return false;
+    if (isAdminOrSupervisor) return true;
+    const uName = normalizeArabic(currentUser?.name || '');
+    if (!uName) return false;
+
+    const isGroupTechSup = group.technical_supervisor && normalizeArabic(group.technical_supervisor) === uName;
+    const isGroupCoord = group.coordinator && normalizeArabic(group.coordinator) === uName;
+
+    // المشرف التقني للمجموعة له صلاحية كاملة على مجموعاته الخاصة:
+    // تسكين المنسق، رابط تيمز، تسكين المحفظ، تعديل توقيت المجموعة
+    if (isGroupTechSup) {
+      if (!field || ['coordinator', 'teams_link', 'mohfez', 'time_start', 'time_end'].includes(field)) {
+        return true;
+      }
+    }
+
+    // إذا كانت المجموعة ضمن مجموعات المستخدم المصرحة
+    if (myGroupNumbers !== null && myGroupNumbers.has(Number(group.group_no))) {
+      const userIsTechOnThisGroup = placementGroups.some(g =>
+        Number(g.group_no) === Number(group.group_no) &&
+        g.technical_supervisor &&
+        normalizeArabic(g.technical_supervisor) === uName
+      );
+      if (userIsTechOnThisGroup) {
+        if (!field || ['coordinator', 'teams_link', 'mohfez', 'time_start', 'time_end'].includes(field)) {
+          return true;
+        }
+      }
+      if (isCoordinator && (!field || ['teams_link', 'mohfez', 'time_start', 'time_end'].includes(field))) {
+        return true;
+      }
+    }
+
+    if (isGroupCoord && (!field || ['teams_link', 'mohfez', 'time_start', 'time_end'].includes(field))) {
+      return true;
+    }
+
+    return false;
+  };
+
   // تحديث بيانات إحدى المجموعات الـ 40 + عكسها على المتقدمين المسكنين فيها
   const handleGroupUpdate = (group, field, value) => {
-    // المنسق الإداري يستطيع تسكين المحفظ أو تعديل توقيت مجموعاته
-    if (!isAdminOrSupervisor && !(isCoordinator && ['mohfez', 'time_start', 'time_end'].includes(field))) return;
+    // التحقق من الصلاحية: الإدارة أو المشرف التقني للمجموعة أو منسق المجموعة
+    if (!canManageGroup(group, field)) return;
     if (field === 'time_start' || field === 'time_end') {
       const wasLegacy = isLegacyDefaultGroupShift(group);
       const patch = wasLegacy
@@ -1579,7 +1621,7 @@ function PlatformApplicantsList() {
                               {g.mohfez && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>حلقة الشيخ/ {g.mohfez}</div>}
                             </td>
                             <td style={{ textAlign: 'center' }}>
-                              {isAdminOrSupervisor ? (
+                              {canManageGroup(g, 'time_start') ? (
                                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
                                   <input
                                     type="time"
@@ -1644,7 +1686,7 @@ function PlatformApplicantsList() {
                               )}
                             </td>
                             <td style={{ minWidth: 200 }}>
-                              {(isAdminOrSupervisor || isCoordinator) ? (
+                              {canManageGroup(g, 'mohfez') ? (
                                 <select
                                   className="form-select"
                                   style={{ padding: '5px 8px', fontSize: 13 }}
@@ -1659,7 +1701,7 @@ function PlatformApplicantsList() {
                               )}
                             </td>
                             <td style={{ minWidth: 200 }}>
-                              {isAdminOrSupervisor ? (
+                              {canManageGroup(g, 'coordinator') ? (
                                 <select
                                   className="form-select"
                                   style={{ padding: '5px 8px', fontSize: 13 }}
@@ -1673,17 +1715,57 @@ function PlatformApplicantsList() {
                                 <div style={{ textAlign: 'center' }}>{g.coordinator || 'غير مسكن بعد'}</div>
                               )}
                             </td>
-                            <td style={{ minWidth: 220 }}>
-                              {isAdminOrSupervisor ? (
-                                <input
-                                  type="text"
-                                  className="form-input"
-                                  style={{ padding: '5px 8px', fontSize: 12 }}
-                                  placeholder="رابط اجتماع Teams..."
-                                  value={g.teams_link || ''}
-                                  onChange={e => handleGroupUpdate(g, 'teams_link', e.target.value)}
-                                  dir="ltr"
-                                />
+                            <td style={{ minWidth: 230 }}>
+                              {canManageGroup(g, 'teams_link') ? (
+                                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                  <input
+                                    type="text"
+                                    className="form-input"
+                                    style={{ padding: '5px 8px', fontSize: 12, flex: 1 }}
+                                    placeholder="رابط اجتماع Teams..."
+                                    value={g.teams_link || ''}
+                                    onChange={e => handleGroupUpdate(g, 'teams_link', e.target.value)}
+                                    dir="ltr"
+                                  />
+                                  {g.teams_link && (
+                                    <a
+                                      href={g.teams_link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title="فتح وتجربة الرابط"
+                                      style={{
+                                        padding: '4px 6px',
+                                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                        color: '#10b981',
+                                        borderRadius: 4,
+                                        fontSize: 11,
+                                        textDecoration: 'none',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      دخول
+                                    </a>
+                                  )}
+                                  {g.teams_link && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-gold-outline"
+                                      style={{ padding: '3px 6px', fontSize: 10, whiteSpace: 'nowrap' }}
+                                      title="نسخ نفس رابط تيمز لجميع المجموعات الخاصة بي"
+                                      onClick={() => {
+                                        if (window.confirm(`هل تريد تطبيق رابط تيمز هذا على جميع مجموعاتك؟`)) {
+                                          shiftGroups.forEach(otherG => {
+                                            if (canManageGroup(otherG, 'teams_link')) {
+                                              handleGroupUpdate(otherG, 'teams_link', g.teams_link);
+                                            }
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      تعميم
+                                    </button>
+                                  )}
+                                </div>
                               ) : g.teams_link ? (
                                 <a href={g.teams_link} target="_blank" rel="noopener noreferrer" style={{ color: '#10b981' }}>
                                   دخول الرابط
