@@ -4,46 +4,56 @@ import zlib from 'zlib';
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'monline';
 
-let cachedClient = null;
-let cachedDb = null;
-
-async function createNewClient() {
-  if (!MONGODB_URI) throw new Error('MONGODB_URI environment variable is not set');
-  const client = new MongoClient(MONGODB_URI, {
-    serverSelectionTimeoutMS: 15000,
-    connectTimeoutMS: 15000,
-    socketTimeoutMS: 45000,
-    maxIdleTimeMS: 15000,
-  });
-  await client.connect();
-  return client;
-}
+let cachedPromise = null;
 
 async function connectToDatabase() {
-  if (cachedClient && cachedDb) {
-    try {
-      await cachedDb.command({ ping: 1 });
-      return cachedDb;
-    } catch (e) {
-      console.warn('Cached MongoDB connection is dead, reconnecting...', e?.message);
-      try { await cachedClient.close(true); } catch {}
-      cachedClient = null;
-      cachedDb = null;
-    }
+  if (!MONGODB_URI) throw new Error('MONGODB_URI environment variable is not set');
+
+  if (!cachedPromise) {
+    const client = new MongoClient(MONGODB_URI, {
+      maxPoolSize: 20,
+      minPoolSize: 1,
+      serverSelectionTimeoutMS: 20000,
+      connectTimeoutMS: 20000,
+      socketTimeoutMS: 45000,
+      maxIdleTimeMS: 30000,
+    });
+
+    cachedPromise = client.connect()
+      .then(connectedClient => connectedClient.db(DB_NAME))
+      .catch(err => {
+        cachedPromise = null;
+        console.error('MongoDB initial connection error:', err);
+        throw err;
+      });
   }
 
   try {
-    cachedClient = await createNewClient();
-    cachedDb = cachedClient.db(DB_NAME);
-    return cachedDb;
-  } catch (firstErr) {
-    console.warn('First connection attempt failed, retrying once...', firstErr?.message);
-    try { if (cachedClient) await cachedClient.close(true); } catch {}
-    cachedClient = null;
-    cachedDb = null;
-    cachedClient = await createNewClient();
-    cachedDb = cachedClient.db(DB_NAME);
-    return cachedDb;
+    const db = await cachedPromise;
+    if (!db) {
+      cachedPromise = null;
+      throw new Error('Database connection returned null');
+    }
+    return db;
+  } catch (err) {
+    cachedPromise = null;
+    console.warn('Cached connection failed, re-establishing fresh connection...', err?.message);
+    const client = new MongoClient(MONGODB_URI, {
+      maxPoolSize: 20,
+      serverSelectionTimeoutMS: 20000,
+      connectTimeoutMS: 20000,
+      socketTimeoutMS: 45000,
+      maxIdleTimeMS: 30000,
+    });
+    cachedPromise = client.connect()
+      .then(connectedClient => connectedClient.db(DB_NAME))
+      .catch(retryErr => {
+        cachedPromise = null;
+        throw retryErr;
+      });
+    const freshDb = await cachedPromise;
+    if (!freshDb) throw new Error('Failed to connect to database');
+    return freshDb;
   }
 }
 
@@ -633,17 +643,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('API Handler Error:', error);
-    if (error && (
-      error.name === 'MongoServerSelectionError' ||
-      error.name === 'MongoNetworkError' ||
-      error.name === 'MongoTimeoutError' ||
-      String(error.message).includes('timed out') ||
-      String(error.message).includes('connection')
-    )) {
-      try { if (cachedClient) await cachedClient.close(true); } catch {}
-      cachedClient = null;
-      cachedDb = null;
-    }
+    cachedPromise = null;
     return res.status(500).json({ message: error.message || 'Internal server error' });
   }
 }

@@ -477,6 +477,8 @@ export function AppDataProvider({ children }) {
       return baseLocal;
     }
 
+    const cleanStr = (s) => (s && typeof s === 'string' && !s.includes('---')) ? s.trim() : '';
+
     const merged = baseLocal.map(loc => {
       const gNo = Number(loc.group_no);
       const rem = remoteList.find(r =>
@@ -486,17 +488,23 @@ export function AppDataProvider({ children }) {
       );
       if (!rem) return loc;
 
+      const mohfezVal = cleanStr(loc.mohfez) || cleanStr(rem.mohfez) || '';
+      const coordVal = cleanStr(loc.coordinator) || cleanStr(rem.coordinator) || '';
+      const sciSupVal = cleanStr(loc.scientific_supervisor) || cleanStr(rem.scientific_supervisor) || '';
+      const techSupVal = cleanStr(loc.technical_supervisor) || cleanStr(rem.technical_supervisor) || '';
+      const linkVal = cleanStr(loc.teams_link) || cleanStr(rem.teams_link) || '';
+
       return {
         ...rem,
         ...loc,
         _id: rem._id || loc._id,
         id: loc.id || rem.id || (rem._id ? String(rem._id) : `pg-${gNo}`),
         group_no: gNo,
-        mohfez: loc.mohfez || rem.mohfez || '',
-        coordinator: loc.coordinator || rem.coordinator || '',
-        scientific_supervisor: loc.scientific_supervisor || rem.scientific_supervisor || '',
-        technical_supervisor: loc.technical_supervisor || rem.technical_supervisor || '',
-        teams_link: loc.teams_link || rem.teams_link || '',
+        mohfez: mohfezVal,
+        coordinator: coordVal,
+        scientific_supervisor: sciSupVal,
+        technical_supervisor: techSupVal,
+        teams_link: linkVal,
         time_start: loc.time_start || rem.time_start || '17:30',
         time_end: loc.time_end || rem.time_end || '21:00',
         shift_label: loc.shift_label || rem.shift_label || 'من 05:30 م إلى 09:00 م',
@@ -2181,7 +2189,8 @@ export function AppDataProvider({ children }) {
           const current = (Array.isArray(prev) && prev.length > 0) ? prev : stored;
           const merged = mergePlacementGroupLists(current, remotePG);
 
-          // إرسال أي تسكين محلي غير مسجل في السيرفر بعد
+          // إرسال أي تسكين محلي غير مسجل في السيرفر دفعة واحدة باستخدام bulkImport لتفادي الضغط
+          const diffItems = [];
           merged.forEach(g => {
             const rem = remotePG.find(r => Number(r.group_no) === Number(g.group_no));
             if (rem) {
@@ -2192,10 +2201,13 @@ export function AppDataProvider({ children }) {
               if (g.technical_supervisor && !rem.technical_supervisor) diff.technical_supervisor = g.technical_supervisor;
               if (g.teams_link && !rem.teams_link) diff.teams_link = g.teams_link;
               if (Object.keys(diff).length > 0) {
-                placementGroupsAPI.update(rem._id || rem.id || `pg-${g.group_no}`, { ...diff, group_no: g.group_no }).catch(() => {});
+                diffItems.push({ ...g, ...diff });
               }
             }
           });
+          if (diffItems.length > 0) {
+            placementGroupsAPI.bulkImport(diffItems).catch(() => {});
+          }
 
           saveToLocalStorage('placementGroups', merged);
           return merged;
@@ -2219,17 +2231,30 @@ export function AppDataProvider({ children }) {
   }, []);
 
   const updatePlacementGroup = (id, updatedData) => {
-    const targetGroup = placementGroups.find(g => String(g.id) === String(id) || String(g._id) === String(id) || String(g.group_no) === String(id));
-    const gNo = targetGroup?.group_no || (String(id).replace(/\D/g, '') ? Number(String(id).replace(/\D/g, '')) : null);
-    const remoteId = targetGroup?._id || targetGroup?.id || (gNo ? `pg-${gNo}` : id);
+    const currentGroups = (Array.isArray(placementGroups) && placementGroups.length > 0)
+      ? placementGroups
+      : getFromLocalStorage('placementGroups', createDefaultPlacementGroups());
+
+    const targetGroup = currentGroups.find(g =>
+      String(g.id) === String(id) ||
+      String(g._id) === String(id) ||
+      String(g.group_no) === String(id) ||
+      (g.group_no && String(id).replace(/\D/g, '') && Number(g.group_no) === Number(String(id).replace(/\D/g, '')))
+    ) || {};
+
+    const gNo = Number(targetGroup.group_no || String(id).replace(/\D/g, ''));
+    const remoteId = targetGroup._id || targetGroup.id || (gNo ? `pg-${gNo}` : id);
+
     const fullPayload = {
-      ...(gNo ? { group_no: gNo, id: `pg-${gNo}` } : {}),
-      ...updatedData
+      ...targetGroup,
+      ...updatedData,
+      ...(gNo ? { group_no: gNo, id: `pg-${gNo}` } : {})
     };
 
     setPlacementGroups(prev => {
-      const next = prev.map(g =>
-        (String(g.id) === String(id) || String(g._id) === String(id) || (targetGroup && Number(g.group_no) === Number(targetGroup.group_no)))
+      const base = (Array.isArray(prev) && prev.length > 0) ? prev : currentGroups;
+      const next = base.map(g =>
+        (String(g.id) === String(id) || String(g._id) === String(id) || (gNo && Number(g.group_no) === gNo))
           ? { ...g, ...fullPayload }
           : g
       );
@@ -2239,7 +2264,7 @@ export function AppDataProvider({ children }) {
 
     pendingApplicantOpsRef.current += 1;
     placementGroupsAPI.update(remoteId, fullPayload)
-      .catch(err => console.error(err))
+      .catch(err => console.error('Error updating placement group on server:', err))
       .finally(() => {
         pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
       });
