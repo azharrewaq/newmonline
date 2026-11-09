@@ -489,7 +489,7 @@ function Login() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="password">كلمة المرور (رقم السجل)</label>
+              <label htmlFor="password">كلمة المرور (الرقم القومي)</label>
               <div className="password-input-wrapper">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -497,7 +497,7 @@ function Login() {
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
-                  placeholder="أدخل رقم السجل"
+                  placeholder="أدخل الرقم القومي"
                   required
                   autoComplete="off"
                 />
