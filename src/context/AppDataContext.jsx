@@ -2215,7 +2215,7 @@ export function AppDataProvider({ children }) {
       }
     };
 
-    const intervalId = setInterval(syncApplicantsFromRemote, 10000);
+    const intervalId = setInterval(syncApplicantsFromRemote, 60000);
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
         syncApplicantsFromRemote();

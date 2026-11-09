@@ -11,12 +11,12 @@ async function connectToDatabase() {
 
   if (!cachedPromise) {
     const client = new MongoClient(MONGODB_URI, {
-      maxPoolSize: 20,
-      minPoolSize: 1,
-      serverSelectionTimeoutMS: 20000,
-      connectTimeoutMS: 20000,
-      socketTimeoutMS: 45000,
-      maxIdleTimeMS: 30000,
+      maxPoolSize: 2,
+      minPoolSize: 0,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 30000,
+      maxIdleTimeMS: 15000,
     });
 
     cachedPromise = client.connect()
@@ -39,11 +39,11 @@ async function connectToDatabase() {
     cachedPromise = null;
     console.warn('Cached connection failed, re-establishing fresh connection...', err?.message);
     const client = new MongoClient(MONGODB_URI, {
-      maxPoolSize: 20,
-      serverSelectionTimeoutMS: 20000,
-      connectTimeoutMS: 20000,
-      socketTimeoutMS: 45000,
-      maxIdleTimeMS: 30000,
+      maxPoolSize: 2,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 30000,
+      maxIdleTimeMS: 15000,
     });
     cachedPromise = client.connect()
       .then(connectedClient => connectedClient.db(DB_NAME))
