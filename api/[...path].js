@@ -284,6 +284,66 @@ export default async function handler(req, res) {
       });
     }
 
+    // ── POST /api/:collection/sync-group-teams-links ─────────────────────────
+    if (req.method === 'POST' && (segment2 === 'sync-group-teams-links' || segment2 === 'sync-teams-links')) {
+      const pgCol = db.collection('placementgroups');
+      const groupsDocs = await pgCol.find({}).toArray();
+
+      const groupLinkMap = new Map();
+      for (const g of groupsDocs) {
+        const gNo = Number(g.group_no || String(g.id || '').replace(/\D/g, ''));
+        const link = String(g.teams_link || '').trim();
+        if (gNo && link) {
+          groupLinkMap.set(gNo, link);
+        }
+      }
+
+      // دمج أي روابط مرسلة من واجهة المستخدم
+      const bodyGroups = req.body?.groups || [];
+      if (Array.isArray(bodyGroups)) {
+        for (const g of bodyGroups) {
+          const gNo = Number(g.group_no || String(g.id || '').replace(/\D/g, ''));
+          const link = String(g.teams_link || '').trim();
+          if (gNo && link) {
+            groupLinkMap.set(gNo, link);
+          }
+        }
+      }
+
+      // 1. أولاً: حذف وتصفير كافة روابط تيمز الحالية لجميع الدارسين
+      const resetRes = await col.updateMany({}, { $set: { teams_link: '' } });
+
+      // 2. ثانياً: تعميم رابط كل مجموعة على جميع الدارسين التابعين لها
+      let totalAssigned = 0;
+      const groupSummaries = [];
+
+      for (const [gNo, link] of groupLinkMap.entries()) {
+        const updateRes = await col.updateMany(
+          {
+            $or: [
+              { group_no: gNo },
+              { group_no: String(gNo) },
+              { group_no: `مجموعة ${gNo}` },
+              { group_no: `مجموعة (${gNo})` }
+            ]
+          },
+          { $set: { teams_link: link } }
+        );
+        const count = updateRes.modifiedCount || 0;
+        totalAssigned += count;
+        groupSummaries.push({ group_no: gNo, count, teams_link: link });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'تم تصفير روابط الدارسين الفردية وتعميم روابط المجموعات بنجاح على جميع الدارسين',
+        resetCount: resetRes.modifiedCount || 0,
+        groupsCount: groupLinkMap.size,
+        totalAssigned,
+        details: groupSummaries
+      });
+    }
+
     // ── DELETE /api/:collection/all ────────────────────────────────────────────
     if (req.method === 'DELETE' && segment2 === 'all') {
       const result = await col.deleteMany({});

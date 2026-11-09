@@ -125,7 +125,7 @@ function PlatformApplicantsCreate() {
         mohfez: grp?.mohfez || prev.mohfez,
         coordinator: grp?.coordinator || prev.coordinator,
         exam_time: (!isLegacyDefaultGroupShift(grp) && grp?.time_start) || prev.exam_time,
-        teams_link: grp?.teams_link || prev.teams_link,
+        teams_link: grp?.teams_link || '',
       }));
     } else {
       setForm(prev => ({ ...prev, [name]: value }));

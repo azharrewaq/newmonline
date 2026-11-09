@@ -72,6 +72,7 @@ function PlatformApplicantsList() {
   const [activeTab, setActiveTab] = useState('applicants'); // applicants | groups | compatible
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSplitting, setIsSplitting] = useState(false);
+  const [isSyncingTeams, setIsSyncingTeams] = useState(false);
 
   // تصحيح فوري لأي متقدمين ما زالوا يحملون تاريخ 9 نوفمبر في الذاكرة المحلية
   useEffect(() => {
@@ -297,7 +298,7 @@ function PlatformApplicantsList() {
         patch.mohfez = grp.mohfez || applicant.mohfez || '';
         patch.coordinator = grp.coordinator || applicant.coordinator || '';
         patch.exam_time = (!isLegacyDefaultGroupShift(grp) && grp.time_start) || applicant.exam_time || '';
-        patch.teams_link = grp.teams_link || applicant.teams_link || '';
+        patch.teams_link = grp.teams_link || '';
       }
     }
     // إذا تم تحديد الرواق والمستوى والسورة نحدّث الحالة تلقائياً إلى "تم تحديد المستوى"
@@ -358,6 +359,16 @@ function PlatformApplicantsList() {
     // التحقق من الصلاحية: الإدارة أو المشرف التقني للمجموعة أو منسق المجموعة
     if (!canManageGroup(group, field)) return;
     updatePlacementGroup(group.id, { [field]: value });
+    if (field === 'teams_link') {
+      const gNo = Number(group.group_no);
+      if (gNo) {
+        setPlatformApplicants(prev => {
+          const next = prev.map(a => Number(a.group_no) === gNo ? { ...a, teams_link: value } : a);
+          localStorage.setItem('platformApplicants', JSON.stringify(next));
+          return next;
+        });
+      }
+    }
   };
 
   // تسكين مشرف علمي أو مشرف تقني لعدد من المجموعات دفعة واحدة
@@ -566,6 +577,55 @@ function PlatformApplicantsList() {
       alert('تم تطبيق تقسيم المواعيد محلياً بنجاح!');
     } finally {
       setIsSplitting(false);
+    }
+  };
+
+  // تصفير روابط الدارسين وتعميم روابط تيمز الخاصة بالمجموعات على جميع الدارسين
+  const handleSyncGroupTeamsLinks = async () => {
+    if (!window.confirm(
+      'هل تريد بالتأكيد تصفير روابط تيمز الحالية للدارسين، وتعميم روابط تيمز الخاصة بالمجموعات (من 1 إلى 40) على جميع الدارسين التابعين لكل مجموعة؟\n\n' +
+      '• سيتم مسح أي روابط فردية قديمة لدى الدارسين.\n' +
+      '• سيتم تعميم رابط كل مجموعة مباشرة على كافة الدارسين المسكنين في تلك المجموعة.'
+    )) return;
+
+    setIsSyncingTeams(true);
+    try {
+      const res = await platformApplicantsAPI.syncGroupTeamsLinks(placementGroups);
+
+      // تحديث فوري للحالة والذاكرة المحلية
+      const groupMap = new Map();
+      placementGroups.forEach(g => {
+        const gNo = Number(g.group_no);
+        if (gNo && g.teams_link) groupMap.set(gNo, g.teams_link.trim());
+      });
+
+      const nextApps = platformApplicants.map(a => {
+        const gNo = Number(a.group_no);
+        return {
+          ...a,
+          teams_link: groupMap.get(gNo) || ''
+        };
+      });
+
+      if (typeof setPlatformApplicants === 'function') {
+        setPlatformApplicants(nextApps);
+      }
+      localStorage.setItem('platformApplicants', JSON.stringify(nextApps));
+
+      alert(
+        `تمت العملية بنجاح في قاعدة البيانات!\n\n` +
+        `• تم تصفير روابط الدارسين الفردية السابقة.\n` +
+        `• عدد المجموعات المعممة روابطها: ${res.groupsCount || groupMap.size} مجموعة\n` +
+        `• إجمالي الدارسين الذين تم تعميم الرابط لهم: ${res.totalAssigned || nextApps.filter(a => a.teams_link).length} دارساً`
+      );
+
+      if (typeof refreshPlatformApplicants === 'function') {
+        await refreshPlatformApplicants();
+      }
+    } catch (err) {
+      alert('فشل تعميم روابط المجموعات: ' + (err.message || err));
+    } finally {
+      setIsSyncingTeams(false);
     }
   };
 
@@ -1462,6 +1522,18 @@ function PlatformApplicantsList() {
                 <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
                 {isRefreshing ? 'جارٍ التحديث...' : 'تحديث البيانات من السيرفر'}
               </button>
+              {isAdminOrSupervisor && (
+                <button
+                  className="btn btn-outline"
+                  onClick={handleSyncGroupTeamsLinks}
+                  disabled={isSyncingTeams}
+                  title="حذف روابط الدارسين الفردية وتعميم رابط كل مجموعة على كافة دارسيها"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#10b981', borderColor: '#10b981' }}
+                >
+                  <Video size={16} />
+                  {isSyncingTeams ? 'جارٍ تعميم الروابط...' : 'تعميم روابط تيمز للمجموعات'}
+                </button>
+              )}
             </div>
             <div className="table-stats">
               إجمالي النتائج ({filtered.length}) — صفحة {currentPage} من {totalPages}
@@ -1779,6 +1851,17 @@ function PlatformApplicantsList() {
               >
                 <Download size={16} /> {printGroupNo ? `تصدير مجموعة (${printGroupNo}) إكسيل` : 'تصدير جميع المجموعات إكسيل'}
               </button>
+              {isAdminOrSupervisor && (
+                <button
+                  className="btn btn-primary"
+                  style={{ height: 38, display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#059669', borderColor: '#059669' }}
+                  onClick={handleSyncGroupTeamsLinks}
+                  disabled={isSyncingTeams}
+                  title="حذف روابط الدارسين الفردية وتعميم رابط كل مجموعة على كافة دارسيها"
+                >
+                  <Video size={16} /> {isSyncingTeams ? 'جارٍ التعميم...' : 'تعميم روابط تيمز على دارسي المجموعات'}
+                </button>
+              )}
             </div>
           </div>
 

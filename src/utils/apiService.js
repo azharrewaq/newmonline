@@ -272,7 +272,8 @@ export const platformApplicantsAPI = {
   deleteAll: () => apiCall('/platformapplicants/all', { method: 'DELETE' }),
   bulkImport: (items) => apiCall('/platformapplicants/bulk-import', { method: 'POST', body: { items } }),
   rescheduleDay9: () => apiCall('/platformapplicants/reschedule-day9', { method: 'POST' }),
-  splitGroupTimes: () => apiCall('/platformapplicants/split-group-times', { method: 'POST' })
+  splitGroupTimes: () => apiCall('/platformapplicants/split-group-times', { method: 'POST' }),
+  syncGroupTeamsLinks: (groups = []) => apiCall('/platformapplicants/sync-group-teams-links', { method: 'POST', body: { groups } })
 };
 
 // Platform Rowaqs API
