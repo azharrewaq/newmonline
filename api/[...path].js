@@ -9,37 +9,24 @@ let cachedPromise = null;
 async function connectToDatabase() {
   if (!MONGODB_URI) throw new Error('MONGODB_URI environment variable is not set');
 
-  if (cachedPromise) {
-    try {
-      const db = await cachedPromise;
-      if (db) {
-        await db.command({ ping: 1 });
-        return db;
-      }
-    } catch (pingErr) {
-      console.warn('Ping failed on cached connection, reconnecting...', pingErr?.message);
-      cachedPromise = null;
-    }
-  }
-
-  const isSrv = (MONGODB_URI || '').startsWith('mongodb+srv://');
-  const clientOptions = {
-    maxPoolSize: 10,
-    minPoolSize: 0,
-    serverSelectionTimeoutMS: 8000,
-    connectTimeoutMS: 8000,
-    socketTimeoutMS: 30000,
-    ...(isSrv ? {} : { directConnection: true })
-  };
-
-  const client = new MongoClient(MONGODB_URI, clientOptions);
-  cachedPromise = client.connect()
-    .then(connectedClient => connectedClient.db(DB_NAME))
-    .catch(err => {
-      cachedPromise = null;
-      console.error('MongoDB connection error:', err);
-      throw err;
+  if (!cachedPromise) {
+    const client = new MongoClient(MONGODB_URI, {
+      maxPoolSize: 20,
+      minPoolSize: 1,
+      serverSelectionTimeoutMS: 20000,
+      connectTimeoutMS: 20000,
+      socketTimeoutMS: 45000,
+      maxIdleTimeMS: 30000,
     });
+
+    cachedPromise = client.connect()
+      .then(connectedClient => connectedClient.db(DB_NAME))
+      .catch(err => {
+        cachedPromise = null;
+        console.error('MongoDB initial connection error:', err);
+        throw err;
+      });
+  }
 
   try {
     const db = await cachedPromise;
@@ -51,8 +38,14 @@ async function connectToDatabase() {
   } catch (err) {
     cachedPromise = null;
     console.warn('Cached connection failed, re-establishing fresh connection...', err?.message);
-    const retryClient = new MongoClient(MONGODB_URI, clientOptions);
-    cachedPromise = retryClient.connect()
+    const client = new MongoClient(MONGODB_URI, {
+      maxPoolSize: 20,
+      serverSelectionTimeoutMS: 20000,
+      connectTimeoutMS: 20000,
+      socketTimeoutMS: 45000,
+      maxIdleTimeMS: 30000,
+    });
+    cachedPromise = client.connect()
       .then(connectedClient => connectedClient.db(DB_NAME))
       .catch(retryErr => {
         cachedPromise = null;
