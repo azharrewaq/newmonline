@@ -128,9 +128,9 @@ export const createDefaultPlacementGroups = () => {
       id: `pg-${groupNo}`,
       group_no: groupNo,
       title: `مجموعة ${groupNo}`,
-      shift_label: '',
-      time_start: '',
-      time_end: '',
+      shift_label: 'من 05:30 م إلى 09:00 م',
+      time_start: '17:30',
+      time_end: '21:00',
       capacity: PLACEMENT_GROUP_CAPACITY,
       scientific_supervisor: '',
       technical_supervisor: '',
@@ -142,14 +142,9 @@ export const createDefaultPlacementGroups = () => {
 };
 
 /**
- * فحص ما إذا كانت بيانات توقيت المجموعة هي القيم الافتراضية القديمة قبل إلغاء التوقيت الثابت
+ * فحص ما إذا كانت بيانات توقيت المجموعة هي القيم الافتراضية القديمة
  */
-export const isLegacyDefaultGroupShift = (g) => {
-  if (!g) return false;
-  if (g.shift_label === 'من 6 إلى 8 مساءً' && g.time_start === '18:00' && g.time_end === '20:00') return true;
-  if (g.shift_label === 'من 8 إلى 10 مساءً' && g.time_start === '20:00' && g.time_end === '22:00') return true;
-  return false;
-};
+export const isLegacyDefaultGroupShift = () => false;
 
 /**
  * تحويل الأرقام العربية (٠-٩) والفارسية إلى أرقام غربية (0-9)
@@ -376,38 +371,42 @@ export const getApplicantExamJoinState = (applicant, group = null, now = new Dat
   if (examDate !== today) {
     const formattedDate = formatExamDateAr(examDate) || examDate;
     if (examDate > today) {
-      return { visible: false, open: false, reason: `موعد اختبارك يوم ${formattedDate} (يظهر الرابط في يوم الاختبار قبل الموعد بـ 15 دقيقة)` };
+      return { visible: false, open: false, reason: `موعد اختبارك يوم ${formattedDate} (يظهر ويتفعل الرابط في يوم الاختبار من 05:30 مساءً إلى 09:00 مساءً)` };
     }
     return { visible: false, open: false, reason: 'انتهى يوم الاختبار الخاص بك' };
   }
 
-  const groupTimeStart = !isLegacyDefaultGroupShift(group) ? normalizeExamTime(group?.time_start) : '';
-  const examTimeStr = normalizeExamTime(applicant.exam_time) || groupTimeStart || '';
+  // توقيت عمل المجموعة: من 5:30 مساءً (17:30) إلى 9:00 مساءً (21:00)
+  const groupStart = parseMinutes(group?.time_start || '17:30') ?? (17 * 60 + 30);
+  const groupEnd = parseMinutes(group?.time_end || '21:00') ?? (21 * 60);
 
-  const rangeMatch = examTimeStr.match(/^(\d{1,2}[:.]\d{2})\s*-\s*(\d{1,2}[:.]\d{2})$/);
-  const examStartMinutes = parseMinutes(rangeMatch ? rangeMatch[1] : examTimeStr);
-  const examEndMinutes = rangeMatch ? parseMinutes(rangeMatch[2]) : (examStartMinutes !== null ? examStartMinutes + 30 : null);
+  const rangeMatch = (normalizeExamTime(applicant.exam_time) || '').match(/^(\d{1,2}[:.]\d{2})\s*-\s*(\d{1,2}[:.]\d{2})$/);
+  const applicantStart = rangeMatch ? parseMinutes(rangeMatch[1]) : parseMinutes(applicant.exam_time);
+  const applicantEnd = rangeMatch ? parseMinutes(rangeMatch[2]) : (applicantStart !== null ? applicantStart + 30 : null);
 
-  if (examStartMinutes === null) {
-    return { visible: true, open: true, reason: '' };
-  }
+  // فترة تفعيل الرابط: خلال فترة المجموعة (من 5:30 م إلى 9:00 م) مع سماحية 15 دقيقة قبل وبعد
+  const effectiveStart = Math.min(groupStart, applicantStart !== null ? applicantStart : groupStart);
+  const effectiveEnd = Math.max(groupEnd, applicantEnd !== null ? applicantEnd : groupEnd);
+
+  const openFrom = effectiveStart - 15; // سماحية 15 دقيقة قبل بداية المجموعة (05:15 م)
+  const closeAt = effectiveEnd + 15;     // سماحية 15 دقيقة بعد نهاية المجموعة (09:15 م)
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const openFrom = examStartMinutes - 15; // قبل بداية الموعد بربع ساعة
-  const closeAt = (examEndMinutes !== null ? examEndMinutes : examStartMinutes) + 15; // بعد نهاية الموعد بربع ساعة
 
   if (currentMinutes < openFrom) {
+    const startStr = group?.time_start ? formatTime12Ar(group.time_start) : '05:30 م';
+    const endStr = group?.time_end ? formatTime12Ar(group.time_end) : '09:00 م';
     return {
       visible: false,
       open: false,
-      reason: `يظهر ويتفعل رابط الاختبار اليوم قبل الموعد (${formatTime12Ar(examTimeStr)}) بربع ساعة`,
+      reason: `يظهر ويتفعل رابط الاختبار اليوم في موعد عمل المجموعة (من ${startStr} إلى ${endStr})`,
     };
   }
   if (currentMinutes > closeAt) {
     return {
       visible: false,
       open: false,
-      reason: 'انتهى الوقت المخصص لدخول اختبار تحديد المستوى',
+      reason: 'انتهى الوقت المخصص لاختبار تحديد المستوى لليوم (كان متاحاً حتى 09:00 مساءً)',
     };
   }
 
@@ -441,19 +440,19 @@ export const formatTime12Ar = (timeStr) => {
 };
 
 /**
- * استخراج وصف توقيت المجموعة وفق ما أدخله المستخدم فقط (بدون افتراض 6-8 أو 8-10)
+ * استخراج وصف توقيت المجموعة (افتراضياً من 05:30 م إلى 09:00 م)
  */
 export const getGroupTimeLabel = (group, groupApplicants = []) => {
-  if (group && !isLegacyDefaultGroupShift(group)) {
-    const start = normalizeExamTime(group.time_start);
-    const end = normalizeExamTime(group.time_end);
+  if (group) {
+    const start = normalizeExamTime(group.time_start) || '17:30';
+    const end = normalizeExamTime(group.time_end) || '21:00';
     if (start && end) return `من ${formatTime12Ar(start)} إلى ${formatTime12Ar(end)}`;
     if (start) return formatTime12Ar(start);
     if (group.shift_label) return group.shift_label;
   }
   const appTime = normalizeExamTime(groupApplicants?.[0]?.exam_time);
   if (appTime) return formatTime12Ar(appTime);
-  return '';
+  return 'من 05:30 م إلى 09:00 م';
 };
 
 const escapeHtml = (val) =>

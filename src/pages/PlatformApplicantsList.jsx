@@ -329,18 +329,6 @@ function PlatformApplicantsList() {
   const handleGroupUpdate = (group, field, value) => {
     // التحقق من الصلاحية: الإدارة أو المشرف التقني للمجموعة أو منسق المجموعة
     if (!canManageGroup(group, field)) return;
-    if (field === 'time_start' || field === 'time_end') {
-      const wasLegacy = isLegacyDefaultGroupShift(group);
-      const patch = wasLegacy
-        ? {
-            time_start: field === 'time_start' ? value : '',
-            time_end: field === 'time_end' ? value : '',
-            shift_label: '',
-          }
-        : { [field]: value, shift_label: '' };
-      updatePlacementGroup(group.id, patch);
-      return;
-    }
     updatePlacementGroup(group.id, { [field]: value });
   };
 
@@ -1628,7 +1616,7 @@ function PlatformApplicantsList() {
                                     className="form-input"
                                     style={{ padding: '4px 6px', fontSize: 12, width: 105 }}
                                     title="من الساعة"
-                                    value={!isLegacyDefaultGroupShift(g) ? (normalizeExamTime(g.time_start) || '') : ''}
+                                    value={normalizeExamTime(g.time_start) || '17:30'}
                                     onChange={e => handleGroupUpdate(g, 'time_start', e.target.value)}
                                   />
                                   <span style={{ fontSize: 12 }}>إلى</span>
@@ -1637,13 +1625,13 @@ function PlatformApplicantsList() {
                                     className="form-input"
                                     style={{ padding: '4px 6px', fontSize: 12, width: 105 }}
                                     title="إلى الساعة"
-                                    value={!isLegacyDefaultGroupShift(g) ? (normalizeExamTime(g.time_end) || '') : ''}
+                                    value={normalizeExamTime(g.time_end) || '21:00'}
                                     onChange={e => handleGroupUpdate(g, 'time_end', e.target.value)}
                                   />
                                 </div>
                               ) : (
                                 <span style={{ fontSize: 12, fontWeight: 'bold', color: shift.badgeColor }}>
-                                  {getGroupTimeLabel(g, groupApps) || 'لم يحدد بعد'}
+                                  {getGroupTimeLabel(g, groupApps) || 'من 05:30 م إلى 09:00 م'}
                                 </span>
                               )}
                             </td>
@@ -1717,7 +1705,7 @@ function PlatformApplicantsList() {
                             </td>
                             <td style={{ minWidth: 230 }}>
                               {canManageGroup(g, 'teams_link') ? (
-                                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                   <input
                                     type="text"
                                     className="form-input"
@@ -1734,36 +1722,17 @@ function PlatformApplicantsList() {
                                       rel="noopener noreferrer"
                                       title="فتح وتجربة الرابط"
                                       style={{
-                                        padding: '4px 6px',
+                                        padding: '4px 8px',
                                         backgroundColor: 'rgba(16, 185, 129, 0.15)',
                                         color: '#10b981',
                                         borderRadius: 4,
-                                        fontSize: 11,
+                                        fontSize: 12,
                                         textDecoration: 'none',
                                         whiteSpace: 'nowrap'
                                       }}
                                     >
                                       دخول
                                     </a>
-                                  )}
-                                  {g.teams_link && (
-                                    <button
-                                      type="button"
-                                      className="btn btn-gold-outline"
-                                      style={{ padding: '3px 6px', fontSize: 10, whiteSpace: 'nowrap' }}
-                                      title="نسخ نفس رابط تيمز لجميع المجموعات الخاصة بي"
-                                      onClick={() => {
-                                        if (window.confirm(`هل تريد تطبيق رابط تيمز هذا على جميع مجموعاتك؟`)) {
-                                          shiftGroups.forEach(otherG => {
-                                            if (canManageGroup(otherG, 'teams_link')) {
-                                              handleGroupUpdate(otherG, 'teams_link', g.teams_link);
-                                            }
-                                          });
-                                        }
-                                      }}
-                                    >
-                                      تعميم
-                                    </button>
                                   )}
                                 </div>
                               ) : g.teams_link ? (

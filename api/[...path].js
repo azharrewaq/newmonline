@@ -237,6 +237,25 @@ export default async function handler(req, res) {
       return res.status(200).json({ deleted: result.deletedCount });
     }
 
+    // ── POST /api/:collection/set-all-times ──────────────────────────────────
+    if (req.method === 'POST' && segment2 === 'set-all-times') {
+      const result = await col.updateMany(
+        {},
+        {
+          $set: {
+            time_start: '17:30',
+            time_end: '21:00',
+            shift_label: 'من 05:30 م إلى 09:00 م'
+          }
+        }
+      );
+      return res.status(200).json({
+        success: true,
+        modifiedCount: result.modifiedCount,
+        message: 'تم ضبط توقيت جميع المجموعات من 05:30 مساءً إلى 09:00 مساءً بنجاح'
+      });
+    }
+
     // ── GET /api/:collection/latest ───────────────────────────────────────────
     if (req.method === 'GET' && segment2 === 'latest') {
       const docs = await col.find({}).sort({ _id: -1 }).limit(25).toArray();
