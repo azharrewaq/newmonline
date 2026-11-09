@@ -303,22 +303,37 @@ function PlatformSessionsList() {
     e.target.value = '';
   };
 
-  // عرض الدارس: تقرير حلقته فقط في شكل نص منسق يُفرَّغ تلقائياً من تقرير المحفظ
-  // وإذا كان من المتقدمين الجدد: تظهر له بطاقة اختبار تحديد المستوى (يظهر الرابط في يوم اختباره فقط قبل الموعد بـ 15 دقيقة وبعده بـ 30 دقيقة)
+  // عرض الدارس: صفحة موعد وبيانات اختبار تحديد المستوى
   if (isStudent && hasPermission('sessions', 'view')) {
-    const myPlacementGroup = myApplicant
-      ? (placementGroups.find(g => Number(g.group_no) === Number(myApplicant.group_no)) ||
-         defaultPlacementGroups.find(g => Number(g.group_no) === Number(myApplicant.group_no)) ||
+    const activeApp = myApplicant || {
+      name: effectiveName || currentUser?.name || 'الدارس',
+      national_id: effectiveNid || currentUser?.username || '-',
+      passport_no: effectiveNid || currentUser?.username || '-',
+      rowaq: currentUser?.rowaq || 'رواق القرآن الكريم',
+      level: currentUser?.level || 'المستوى الأول',
+      group_no: currentUser?.group_no || '',
+      exam_date: currentUser?.exam_date || '',
+      exam_time: currentUser?.exam_time || '',
+      teams_link: currentUser?.teams_link || '',
+      scientific_supervisor: currentUser?.scientific_supervisor || '',
+      technical_supervisor: currentUser?.technical_supervisor || '',
+      mohfez: currentUser?.mohfez || '',
+      coordinator: currentUser?.coordinator || '',
+      status: currentUser?.status || 'في انتظار الاختبار',
+    };
+    const myPlacementGroup = activeApp.group_no
+      ? (placementGroups.find(g => Number(g.group_no) === Number(activeApp.group_no)) ||
+         defaultPlacementGroups.find(g => Number(g.group_no) === Number(activeApp.group_no)) ||
          null)
       : null;
-    const examJoin = myApplicant ? getApplicantExamJoinState(myApplicant, myPlacementGroup, now) : null;
-    const examLink = myApplicant?.teams_link || myPlacementGroup?.teams_link || '';
-    const examMohfez = myApplicant?.mohfez || myPlacementGroup?.mohfez || '-';
-    const examCoord = myApplicant?.coordinator || myPlacementGroup?.coordinator || '-';
-    const examSciSupervisor = myApplicant?.scientific_supervisor || myPlacementGroup?.scientific_supervisor || '-';
-    const examTechSupervisor = myApplicant?.technical_supervisor || myPlacementGroup?.technical_supervisor || '-';
-    const groupTimeLabel = getGroupTimeLabel(myPlacementGroup, myApplicant ? [myApplicant] : []);
-    const examShift = groupTimeLabel || (myApplicant?.exam_time ? formatTime12Ar(myApplicant.exam_time) : 'سيتم تحديده قريباً');
+    const examJoin = getApplicantExamJoinState(activeApp, myPlacementGroup, now);
+    const examLink = activeApp?.teams_link || myPlacementGroup?.teams_link || '';
+    const examMohfez = activeApp?.mohfez || myPlacementGroup?.mohfez || '-';
+    const examCoord = activeApp?.coordinator || myPlacementGroup?.coordinator || '-';
+    const examSciSupervisor = activeApp?.scientific_supervisor || myPlacementGroup?.scientific_supervisor || '-';
+    const examTechSupervisor = activeApp?.technical_supervisor || myPlacementGroup?.technical_supervisor || '-';
+    const groupTimeLabel = getGroupTimeLabel(myPlacementGroup, [activeApp]);
+    const examShift = groupTimeLabel || (activeApp?.exam_time ? formatTime12Ar(activeApp.exam_time) : 'سيتم تحديده قريباً');
 
     const reportBoxStyle = {
       whiteSpace: 'pre-wrap', lineHeight: 2, background: 'var(--bg-secondary)',
@@ -329,12 +344,12 @@ function PlatformSessionsList() {
       <div className="management-page">
         <div className="page-header">
           <div className="title-section">
-            <h2>{scopedSessions.length > 0 ? 'تقرير الحلقة' : 'اختبار تحديد المستوى'}</h2>
-            <p>{scopedSessions.length > 0 ? 'آخر تقرير سجّله المحفظ لحلقتك' : 'بيانات لجنة وموعد اختبار تحديد المستوى الخاص بك'}</p>
+            <h2>{scopedSessions.length > 0 ? 'تقرير الحلقة' : 'موعد اختبار تحديد المستوى'}</h2>
+            <p>{scopedSessions.length > 0 ? 'آخر تقرير سجّله المحفظ لحلقتك' : 'بيانات لجنة وموعد اختبار تحديد المستوى ورابط الدخول الخاص بك'}</p>
           </div>
         </div>
 
-        {myApplicant && scopedSessions.length === 0 && (
+        {scopedSessions.length === 0 && (
           <div className="box-card" style={{ padding: 28, marginBottom: 24, border: '2px solid var(--accent-gold)', backgroundColor: 'var(--bg-card)' }}>
             {/* ترويسة إخطار موعد اختبار تحديد المستوى */}
             <div style={{
@@ -356,14 +371,14 @@ function PlatformSessionsList() {
                 </h3>
               </div>
               <span style={{
-                backgroundColor: myApplicant.status === 'تم تحديد المستوى' ? '#10b981' : 'var(--accent-gold)',
-                color: myApplicant.status === 'تم تحديد المستوى' ? '#ffffff' : '#000000',
+                backgroundColor: activeApp.status === 'تم تحديد المستوى' ? '#10b981' : 'var(--accent-gold)',
+                color: activeApp.status === 'تم تحديد المستوى' ? '#ffffff' : '#000000',
                 padding: '8px 20px',
                 borderRadius: 20,
                 fontSize: 15,
                 fontWeight: '800'
               }}>
-                الحالة: {myApplicant.status || 'في انتظار الاختبار'}
+                الحالة: {activeApp.status || 'في انتظار الاختبار'}
               </span>
             </div>
 
@@ -391,13 +406,13 @@ function PlatformSessionsList() {
                       اسم الدارس
                     </td>
                     <td style={{ width: '30%', textAlign: 'right', fontWeight: '800', fontSize: 18, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
-                      {myApplicant.name || '-'}
+                      {activeApp.name || '-'}
                     </td>
                     <td style={{ width: '20%', textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       الرقم القومي / جواز السفر
                     </td>
                     <td style={{ width: '30%', fontWeight: '800', fontSize: 17, direction: 'ltr', textAlign: 'right', color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
-                      {myApplicant.national_id || myApplicant.passport_no || '-'}
+                      {activeApp.national_id || activeApp.passport_no || '-'}
                     </td>
                   </tr>
 
@@ -406,7 +421,7 @@ function PlatformSessionsList() {
                       الرواق المتقدم إليه
                     </td>
                     <td colSpan="3" style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
-                      {myApplicant.rowaq || '-'}
+                      {activeApp.rowaq || '-'}
                     </td>
                   </tr>
 
@@ -425,7 +440,7 @@ function PlatformSessionsList() {
                         fontSize: 17,
                         fontWeight: '800'
                       }}>
-                        {formatExamDateAr(myApplicant.exam_date) || 'سيتم تحديده قريباً'}
+                        {formatExamDateAr(activeApp.exam_date) || 'سيتم تحديده قريباً'}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
@@ -441,9 +456,9 @@ function PlatformSessionsList() {
                         fontSize: 16,
                         fontWeight: '800'
                       }}>
-                        {myApplicant.exam_time ? `الساعة ${formatTime12Ar(myApplicant.exam_time)}` : examShift}
+                        {activeApp.exam_time ? `الساعة ${formatTime12Ar(activeApp.exam_time)}` : examShift}
                       </span>
-                      {groupTimeLabel && myApplicant.exam_time && groupTimeLabel !== formatTime12Ar(myApplicant.exam_time) && (
+                      {groupTimeLabel && activeApp.exam_time && groupTimeLabel !== formatTime12Ar(activeApp.exam_time) && (
                         <span style={{ fontSize: 15, fontWeight: '700', color: 'var(--text-primary)', marginRight: 10 }}>
                           (فترة المجموعة: {groupTimeLabel})
                         </span>
@@ -456,7 +471,7 @@ function PlatformSessionsList() {
                       رقم مجموعة الاختبار
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 18, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
-                      {myApplicant.group_no ? `مجموعة رقم (${myApplicant.group_no})` : 'جاري التسكين'}
+                      {activeApp.group_no ? `مجموعة رقم (${activeApp.group_no})` : 'جاري التسكين'}
                     </td>
                     <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       المحفظ الممتحن
@@ -491,26 +506,26 @@ function PlatformSessionsList() {
                     <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                       نتيجة تحديد المستوى
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: myApplicant.tested_level ? '#10b981' : 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
-                      {myApplicant.tested_level
-                        ? `${myApplicant.tested_level}${myApplicant.stopped_surah ? ` (متوقف عند سورة: ${myApplicant.stopped_surah})` : ''}`
+                    <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: activeApp.tested_level ? '#10b981' : 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+                      {activeApp.tested_level
+                        ? `${activeApp.tested_level}${activeApp.stopped_surah ? ` (متوقف عند سورة: ${activeApp.stopped_surah})` : ''}`
                         : 'تُعلَن بعد أداء الاختبار'}
                     </td>
                   </tr>
 
-                  {(myApplicant.preferred_days || myApplicant.preferred_time) && (
+                  {(activeApp.preferred_days || activeApp.preferred_time) && (
                     <tr>
                       <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                         الأيام المناسبة للدراسة
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
-                        {myApplicant.preferred_days || '-'}
+                        {activeApp.preferred_days || '-'}
                       </td>
                       <td style={{ textAlign: 'right', padding: '15px 18px', background: 'rgba(212, 175, 55, 0.22)', color: 'var(--text-primary)', fontSize: 16, fontWeight: '800', border: '1px solid var(--border-subtle)' }}>
                         التوقيت المناسب للدراسة
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: '800', fontSize: 17, color: 'var(--text-primary)', padding: '15px 18px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
-                        {myApplicant.preferred_time || '-'}
+                        {activeApp.preferred_time || '-'}
                       </td>
                     </tr>
                   )}
@@ -548,7 +563,11 @@ function PlatformSessionsList() {
                   href={examLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => updatePlatformApplicant(myApplicant.id, { exam_attended: true, exam_joined_at: new Date().toISOString() })}
+                  onClick={() => {
+                    if (activeApp.id) {
+                      updatePlatformApplicant(activeApp.id, { exam_attended: true, exam_joined_at: new Date().toISOString() });
+                    }
+                  }}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -574,25 +593,14 @@ function PlatformSessionsList() {
                   fontSize: 15,
                   fontWeight: '800'
                 }}>
-                  يُفعَّل الرابط يوم {formatExamDateAr(myApplicant.exam_date) || 'الاختبار'} قبل الموعد بـ 15 دقيقة
+                  يُفعَّل الرابط يوم {formatExamDateAr(activeApp.exam_date) || 'الاختبار'} قبل الموعد بـ 15 دقيقة
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {scopedSessions.length === 0 && !myApplicant ? (
-          (applicantLoading || platformApplicants.length === 0) ? (
-            <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontSize: 16, fontWeight: '700' }}>
-              <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
-              جاري استرجاع بيانات لجنة وموعد اختبار تحديد المستوى...
-            </div>
-          ) : (
-            <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-              لم يتم العثور على موعد اختبار مسجل لرقمك القومي حتى الآن. إذا قمت بالتسجيل حديثاً يُرجى مراجعة إدارة المنصة.
-            </div>
-          )
-        ) : scopedSessions.map(s => {
+        {scopedSessions.map(s => {
           const reports = sessionReports
             .filter(r => String(r.sessionId) === String(s.id) && !!r.isPlatform)
             .sort((a, b) => String(b.date).localeCompare(String(a.date)) || (parseInt(b.sessionNum, 10) || 0) - (parseInt(a.sessionNum, 10) || 0));

@@ -432,7 +432,7 @@ function Sidebar({ isOpen, toggleSidebar }) {
                     onClick={handleLinkClick}
                   >
                     <Icon size={18} className="menu-icon" />
-                    <span>{item.name}</span>
+                    <span>{role === 'student' && item.path === '/platform-sessions' ? 'موعد اختبار تحديد المستوى' : item.name}</span>
                     {item.path === '/platform-announcements' && notifCount > 0 && (
                       <span style={{ marginRight: 'auto', background: '#ef4444', color: '#fff', borderRadius: 10, padding: '0 7px', fontSize: 11, fontWeight: 'bold' }}>{notifCount}</span>
                     )}

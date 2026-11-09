@@ -74,7 +74,7 @@ function Header({ toggleSidebar }) {
             borderRadius: '50%',
             backgroundColor: '#3b82f6'
           }}></span>
-          المنصة الإلكترونية
+          {currentUser?.role === 'student' ? 'موعد اختبار تحديد المستوى' : 'المنصة الإلكترونية'}
         </span>
         <Link to="/" className="primary-btn" style={{ textDecoration: 'none', marginRight: '15px' }}>
           الصفحة الرئيسية
