@@ -4,57 +4,15 @@ import zlib from 'zlib';
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'monline';
 
-let cachedPromise = null;
+let cachedDb = null;
 
 async function connectToDatabase() {
+  if (cachedDb) return cachedDb;
   if (!MONGODB_URI) throw new Error('MONGODB_URI environment variable is not set');
-
-  if (!cachedPromise) {
-    const client = new MongoClient(MONGODB_URI, {
-      maxPoolSize: 2,
-      minPoolSize: 0,
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
-      socketTimeoutMS: 30000,
-      maxIdleTimeMS: 15000,
-    });
-
-    cachedPromise = client.connect()
-      .then(connectedClient => connectedClient.db(DB_NAME))
-      .catch(err => {
-        cachedPromise = null;
-        console.error('MongoDB initial connection error:', err);
-        throw err;
-      });
-  }
-
-  try {
-    const db = await cachedPromise;
-    if (!db) {
-      cachedPromise = null;
-      throw new Error('Database connection returned null');
-    }
-    return db;
-  } catch (err) {
-    cachedPromise = null;
-    console.warn('Cached connection failed, re-establishing fresh connection...', err?.message);
-    const client = new MongoClient(MONGODB_URI, {
-      maxPoolSize: 2,
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
-      socketTimeoutMS: 30000,
-      maxIdleTimeMS: 15000,
-    });
-    cachedPromise = client.connect()
-      .then(connectedClient => connectedClient.db(DB_NAME))
-      .catch(retryErr => {
-        cachedPromise = null;
-        throw retryErr;
-      });
-    const freshDb = await cachedPromise;
-    if (!freshDb) throw new Error('Failed to connect to database');
-    return freshDb;
-  }
+  const client = new MongoClient(MONGODB_URI);
+  await client.connect();
+  cachedDb = client.db(DB_NAME);
+  return cachedDb;
 }
 
 function tryObjectId(id) {
@@ -453,11 +411,11 @@ export default async function handler(req, res) {
 
     // ── GET /api/:collection ───────────────────────────────────────────────────
     if (req.method === 'GET' && !segment2) {
-      let queryCursor = col.find({}).sort({ _id: 1 });
-      const bNum = Number(batchParam);
-      const batchSize = 3000;
-      if (!isNaN(bNum) && bNum >= 1) {
-        queryCursor = queryCursor.skip((bNum - 1) * batchSize).limit(batchSize);
+      let queryCursor = col.find({});
+      if (batchParam === '1') {
+        queryCursor = queryCursor.skip(0).limit(3500);
+      } else if (batchParam === '2') {
+        queryCursor = queryCursor.skip(3500).limit(3500);
       }
       const docs = await queryCursor.toArray();
 
@@ -651,7 +609,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('API Handler Error:', error);
-    cachedPromise = null;
+    cachedDb = null;
     return res.status(500).json({ message: error.message || 'Internal server error' });
   }
 }
