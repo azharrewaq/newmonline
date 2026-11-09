@@ -251,14 +251,16 @@ export const platformStudentsAPI = {
 export const platformApplicantsAPI = {
   getAll: async () => {
     try {
-      const [b1, b2] = await Promise.all([
+      const [b1, b2, b3] = await Promise.all([
         apiCall('/platformapplicants?batch=1'),
-        apiCall('/platformapplicants?batch=2')
+        apiCall('/platformapplicants?batch=2'),
+        apiCall('/platformapplicants?batch=3')
       ]);
-      if (Array.isArray(b1) && Array.isArray(b2)) {
-        return [...b1, ...b2];
+      if (Array.isArray(b1) && Array.isArray(b2) && Array.isArray(b3)) {
+        return [...b1, ...b2, ...b3];
       }
-      if (Array.isArray(b1)) return b1;
+      const valid = [b1, b2, b3].filter(Array.isArray).flat();
+      if (valid.length > 0) return valid;
       return await apiCall('/platformapplicants');
     } catch {
       return await apiCall('/platformapplicants');

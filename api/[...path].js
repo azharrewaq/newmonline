@@ -413,9 +413,11 @@ export default async function handler(req, res) {
     if (req.method === 'GET' && !segment2) {
       let queryCursor = col.find({});
       if (batchParam === '1') {
-        queryCursor = queryCursor.skip(0).limit(3500);
+        queryCursor = queryCursor.skip(0).limit(1750);
       } else if (batchParam === '2') {
-        queryCursor = queryCursor.skip(3500).limit(3500);
+        queryCursor = queryCursor.skip(1750).limit(1750);
+      } else if (batchParam === '3') {
+        queryCursor = queryCursor.skip(3500).limit(1750);
       }
       const docs = await queryCursor.toArray();
 
