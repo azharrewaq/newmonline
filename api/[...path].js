@@ -4,20 +4,47 @@ import zlib from 'zlib';
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'monline';
 
+let cachedClient = null;
 let cachedDb = null;
 
-async function connectToDatabase() {
-  if (cachedDb) return cachedDb;
+async function createNewClient() {
   if (!MONGODB_URI) throw new Error('MONGODB_URI environment variable is not set');
   const client = new MongoClient(MONGODB_URI, {
-    serverSelectionTimeoutMS: 8000,
-    connectTimeoutMS: 10000,
-    family: 4,
-    autoSelectFamily: false,
+    serverSelectionTimeoutMS: 15000,
+    connectTimeoutMS: 15000,
+    socketTimeoutMS: 45000,
+    maxIdleTimeMS: 15000,
   });
   await client.connect();
-  cachedDb = client.db(DB_NAME);
-  return cachedDb;
+  return client;
+}
+
+async function connectToDatabase() {
+  if (cachedClient && cachedDb) {
+    try {
+      await cachedDb.command({ ping: 1 });
+      return cachedDb;
+    } catch (e) {
+      console.warn('Cached MongoDB connection is dead, reconnecting...', e?.message);
+      try { await cachedClient.close(true); } catch {}
+      cachedClient = null;
+      cachedDb = null;
+    }
+  }
+
+  try {
+    cachedClient = await createNewClient();
+    cachedDb = cachedClient.db(DB_NAME);
+    return cachedDb;
+  } catch (firstErr) {
+    console.warn('First connection attempt failed, retrying once...', firstErr?.message);
+    try { if (cachedClient) await cachedClient.close(true); } catch {}
+    cachedClient = null;
+    cachedDb = null;
+    cachedClient = await createNewClient();
+    cachedDb = cachedClient.db(DB_NAME);
+    return cachedDb;
+  }
 }
 
 function tryObjectId(id) {
@@ -606,6 +633,17 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('API Handler Error:', error);
+    if (error && (
+      error.name === 'MongoServerSelectionError' ||
+      error.name === 'MongoNetworkError' ||
+      error.name === 'MongoTimeoutError' ||
+      String(error.message).includes('timed out') ||
+      String(error.message).includes('connection')
+    )) {
+      try { if (cachedClient) await cachedClient.close(true); } catch {}
+      cachedClient = null;
+      cachedDb = null;
+    }
     return res.status(500).json({ message: error.message || 'Internal server error' });
   }
 }

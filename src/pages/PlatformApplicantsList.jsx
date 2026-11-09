@@ -560,7 +560,17 @@ function PlatformApplicantsList() {
       }
       alert('تم تحديث البيانات من قاعدة البيانات بنجاح!');
     } catch (err) {
-      alert('فشل تحديث البيانات من السيرفر: ' + err.message);
+      // إعادة المحاولة تلقائياً لامتصاص وقت الإيقاظ المؤقت (Cold Start)
+      try {
+        await new Promise(r => setTimeout(r, 1200));
+        if (typeof refreshPlatformApplicants === 'function') {
+          await refreshPlatformApplicants();
+        }
+        alert('تم تحديث البيانات من قاعدة البيانات بنجاح!');
+        return;
+      } catch (retryErr) {
+        alert('فشل تحديث البيانات من السيرفر: ' + (retryErr.message || err.message));
+      }
     } finally {
       setIsRefreshing(false);
     }

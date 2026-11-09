@@ -2795,11 +2795,10 @@ export function AppDataProvider({ children }) {
         saveToLocalStorage('platformApplicants', normApps);
 
         if (Array.isArray(remotePG) && remotePG.length > 0) {
-          const normPG = remotePG
-            .map(g => ({ ...g, id: g.id || g._id }))
-            .sort((a, b) => (Number(a.group_no) || 0) - (Number(b.group_no) || 0));
-          setPlacementGroups(normPG);
-          saveToLocalStorage('placementGroups', normPG);
+          const currentPG = getFromLocalStorage('placementGroups', placementGroups);
+          const mergedPG = mergePlacementGroupLists(currentPG, remotePG);
+          setPlacementGroups(mergedPG);
+          saveToLocalStorage('placementGroups', mergedPG);
         }
 
         return normApps;
