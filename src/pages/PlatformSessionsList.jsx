@@ -1,14 +1,15 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, Plus, Download, Upload, Edit, Trash2, ClipboardCheck, FileText, Video, Play, UserCheck } from 'lucide-react';
+import { Search, Plus, Download, Upload, Edit, Trash2, ClipboardCheck, FileText, Video, Play, UserCheck, Loader2 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
 import { exportToXLSX, importFromXLSX } from '../utils/xlsxHelper';
-import { filterSessionsForUser } from '../utils/userScopeHelper';
+import { filterSessionsForUser, normalizeArabic } from '../utils/userScopeHelper';
 import { countriesList } from '../data/countries';
 import { getJoinState, useNow, formatReportText, toLocalDateStr } from '../utils/sessionHelpers';
 import { getSubstitutionFor } from '../utils/userScopeHelper';
-import { getApplicantExamJoinState, formatTime12Ar, normalizeExamDate, formatExamDateAr, getGroupTimeLabel } from '../utils/placementHelpers';
+import { getApplicantExamJoinState, formatTime12Ar, normalizeExamDate, normalizeExamTime, formatExamDateAr, getGroupTimeLabel, createDefaultPlacementGroups } from '../utils/placementHelpers';
+import { apiCall } from '../utils/apiService';
 import SubstituteModal from '../components/SubstituteModal';
 
 function PlatformSessionsList() {
@@ -48,6 +49,84 @@ function PlatformSessionsList() {
   const [filterRowaq, setFilterRowaq] = useState('');
   const [filterStudentType, setFilterStudentType] = useState('');
   const [filterActiveNow, setFilterActiveNow] = useState(searchParams.get('active') === 'true');
+
+  const toEnglishDigits = (str) => {
+    if (!str) return '';
+    return String(str)
+      .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+      .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+      .trim();
+  };
+
+  const [remoteApplicant, setRemoteApplicant] = useState(currentUser?.applicantData || null);
+  const [applicantLoading, setApplicantLoading] = useState(false);
+  const defaultPlacementGroups = useMemo(() => createDefaultPlacementGroups(), []);
+
+  const myApplicant = useMemo(() => {
+    if (currentUser?.applicantData?.exam_date || currentUser?.applicantData?.group_no) {
+      return currentUser.applicantData;
+    }
+    if (remoteApplicant) return remoteApplicant;
+    const userNid = toEnglishDigits(String(currentUser?.national_id || currentUser?.username || '').trim());
+    if (userNid && platformApplicants?.length > 0) {
+      const found = platformApplicants.find(a => {
+        const aNid = toEnglishDigits(String(a.national_id || a.passport_no || '').trim());
+        return aNid && aNid === userNid;
+      });
+      if (found) return found;
+    }
+    if (currentUser?.name && platformApplicants?.length > 0) {
+      const curNorm = normalizeArabic(currentUser.name);
+      const foundByName = platformApplicants.find(a => a.name && normalizeArabic(a.name) === curNorm);
+      if (foundByName) return foundByName;
+    }
+    return currentUser?.applicantData || null;
+  }, [currentUser, platformApplicants, remoteApplicant]);
+
+  useEffect(() => {
+    if (!isStudent) return;
+    if (myApplicant?.exam_date || myApplicant?.group_no) return;
+
+    let isMounted = true;
+    const fetchApplicantData = async () => {
+      setApplicantLoading(true);
+      try {
+        const userNid = toEnglishDigits(String(currentUser?.national_id || currentUser?.username || '').trim());
+        let res = null;
+        if (userNid) {
+          res = await apiCall(`/platformapplicants/${encodeURIComponent(userNid)}`).catch(() => null);
+        }
+        if (!res && currentUser?.name) {
+          res = await apiCall(`/platformapplicants/${encodeURIComponent(currentUser.name)}`).catch(() => null);
+        }
+        if (isMounted && res && (res.name || res.national_id || res.group_no)) {
+          const normRes = {
+            ...res,
+            id: res.id || res._id,
+            exam_date: res.exam_date ? normalizeExamDate(res.exam_date) : '',
+            exam_time: res.exam_time ? normalizeExamTime(res.exam_time) : ''
+          };
+          setRemoteApplicant(normRes);
+          try {
+            const rawCur = sessionStorage.getItem('currentUser');
+            if (rawCur) {
+              const curObj = JSON.parse(rawCur);
+              curObj.applicantData = normRes;
+              if (normRes.national_id) curObj.national_id = normRes.national_id;
+              if (normRes.name) curObj.name = normRes.name;
+              sessionStorage.setItem('currentUser', JSON.stringify(curObj));
+            }
+          } catch {}
+        }
+      } catch (err) {
+        console.error('Failed to fetch applicant data for student:', err);
+      } finally {
+        if (isMounted) setApplicantLoading(false);
+      }
+    };
+    fetchApplicantData();
+    return () => { isMounted = false; };
+  }, [isStudent, currentUser?.national_id, currentUser?.username, currentUser?.name, myApplicant]);
 
   // زر الدخول للحلقة: يُفعَّل قبل الموعد بربع ساعة ويتوقف مع انتهاء وقت الحلقة (الأدمن مستثنى)
   const renderJoinButton = (s) => {
@@ -194,12 +273,10 @@ function PlatformSessionsList() {
   // عرض الدارس: تقرير حلقته فقط في شكل نص منسق يُفرَّغ تلقائياً من تقرير المحفظ
   // وإذا كان من المتقدمين الجدد: تظهر له بطاقة اختبار تحديد المستوى (يظهر الرابط في يوم اختباره فقط قبل الموعد بـ 15 دقيقة وبعده بـ 30 دقيقة)
   if (isStudent && hasPermission('sessions', 'view')) {
-    const userNid = String(currentUser?.national_id || currentUser?.username || '').trim();
-    const myApplicant = platformApplicants.find(a =>
-      String(a.national_id || a.passport_no || '').trim() === userNid
-    );
     const myPlacementGroup = myApplicant
-      ? placementGroups.find(g => Number(g.group_no) === Number(myApplicant.group_no))
+      ? (placementGroups.find(g => Number(g.group_no) === Number(myApplicant.group_no)) ||
+         defaultPlacementGroups.find(g => Number(g.group_no) === Number(myApplicant.group_no)) ||
+         null)
       : null;
     const examJoin = myApplicant ? getApplicantExamJoinState(myApplicant, myPlacementGroup, now) : null;
     const examLink = myApplicant?.teams_link || myPlacementGroup?.teams_link || '';
@@ -219,8 +296,8 @@ function PlatformSessionsList() {
       <div className="management-page">
         <div className="page-header">
           <div className="title-section">
-            <h2>{scopedSessions.length > 0 ? 'تقرير الحلقة' : (myApplicant ? 'اختبار تحديد المستوى' : 'تقرير الحلقة')}</h2>
-            <p>{scopedSessions.length > 0 ? 'آخر تقرير سجّله المحفظ لحلقتك' : (myApplicant ? 'بيانات لجنة وموعد اختبار تحديد المستوى الخاص بك' : 'آخر تقرير سجّله المحفظ لحلقتك')}</p>
+            <h2>{scopedSessions.length > 0 ? 'تقرير الحلقة' : (myApplicant ? 'اختبار تحديد المستوى' : (applicantLoading ? 'اختبار تحديد المستوى' : 'تقرير الحلقة'))}</h2>
+            <p>{scopedSessions.length > 0 ? 'آخر تقرير سجّله المحفظ لحلقتك' : (myApplicant ? 'بيانات لجنة وموعد اختبار تحديد المستوى الخاص بك' : (applicantLoading ? 'جاري استرجاع بيانات لجنة وموعد الاختبار...' : 'آخر تقرير سجّله المحفظ لحلقتك'))}</p>
           </div>
         </div>
 
@@ -472,7 +549,14 @@ function PlatformSessionsList() {
         )}
 
         {scopedSessions.length === 0 && !myApplicant ? (
-          <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>لا توجد حلقة مسجلة لك.</div>
+          applicantLoading ? (
+            <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontSize: 16, fontWeight: '700' }}>
+              <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
+              جاري استرجاع بيانات لجنة وموعد اختبار تحديد المستوى...
+            </div>
+          ) : (
+            <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>لا توجد حلقة مسجلة لك.</div>
+          )
         ) : scopedSessions.map(s => {
           const reports = sessionReports
             .filter(r => String(r.sessionId) === String(s.id) && !!r.isPlatform)

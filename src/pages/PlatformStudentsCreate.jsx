@@ -132,19 +132,24 @@ function PlatformStudentsCreate() {
     if (isEditing) {
       updatePlatformStudent(studentId, studentData);
       if (existingUser) {
-        updateUser(existingUser.id, {
+        updateUser(existingUser.id || existingUser._id, {
           name: form.name,
           phone: form.phone,
+          username: form.passport_no,
           email: form.passport_no,
           password: form.passport_no,
+          record_number: form.passport_no,
           national_id: form.passport_no,
+          role: 'student',
           userSession: form.session_id || ''
         });
       } else {
         addUser({
           name: form.name,
+          username: form.passport_no,
           email: form.passport_no,
           password: form.passport_no,
+          record_number: form.passport_no,
           phone: form.phone,
           role: 'student',
           national_id: form.passport_no,
@@ -155,19 +160,24 @@ function PlatformStudentsCreate() {
     } else {
       addPlatformStudent(studentData);
       if (existingUser) {
-        updateUser(existingUser.id, {
+        updateUser(existingUser.id || existingUser._id, {
           name: form.name,
           phone: form.phone,
+          username: form.passport_no,
           role: 'student',
           email: form.passport_no,
+          password: form.passport_no,
+          record_number: form.passport_no,
           national_id: form.passport_no,
           userSession: form.session_id || ''
         });
       } else {
         addUser({
           name: form.name,
+          username: form.passport_no,
           email: form.passport_no,
           password: form.passport_no,
+          record_number: form.passport_no,
           phone: form.phone,
           role: 'student',
           national_id: form.passport_no,

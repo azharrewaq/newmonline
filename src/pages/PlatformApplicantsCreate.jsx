@@ -20,6 +20,7 @@ import {
   isLegacyDefaultGroupShift,
   getGroupTimeLabel,
 } from '../utils/placementHelpers';
+import { normalizeArabic } from '../utils/userScopeHelper';
 
 function PlatformApplicantsCreate() {
   const {
@@ -176,24 +177,30 @@ function PlatformApplicantsCreate() {
 
     const existingUser = users.find(u => {
       const uNid = String(u.national_id || u.username || u.email || '').trim();
-      return (oldNid && uNid === oldNid) || (nid && uNid === nid);
+      return (oldNid && uNid === oldNid) || (nid && uNid === nid) ||
+             (finalForm.name && u.name && normalizeArabic(u.name) === normalizeArabic(finalForm.name));
     });
 
     if (isEditing) {
       updatePlatformApplicant(applicantId, finalForm);
       if (existingUser) {
-        updateUser(existingUser.id, {
+        updateUser(existingUser.id || existingUser._id, {
           name: finalForm.name,
           phone: finalForm.phone,
+          username: nid,
           email: nid,
           password: nid,
+          record_number: nid,
           national_id: nid,
+          role: 'student',
         });
       } else {
         addUser({
           name: finalForm.name,
+          username: nid,
           email: nid,
           password: nid,
+          record_number: nid,
           phone: finalForm.phone,
           role: 'student',
           national_id: nid,
@@ -202,11 +209,24 @@ function PlatformApplicantsCreate() {
       alert('تم تحديث بيانات المتقدم بنجاح');
     } else {
       addPlatformApplicant(finalForm);
-      if (!existingUser) {
-        addUser({
+      if (existingUser) {
+        updateUser(existingUser.id || existingUser._id, {
           name: finalForm.name,
+          phone: finalForm.phone,
+          username: nid,
           email: nid,
           password: nid,
+          record_number: nid,
+          national_id: nid,
+          role: 'student',
+        });
+      } else {
+        addUser({
+          name: finalForm.name,
+          username: nid,
+          email: nid,
+          password: nid,
+          record_number: nid,
           phone: finalForm.phone,
           role: 'student',
           national_id: nid,

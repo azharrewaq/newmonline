@@ -1906,7 +1906,7 @@ export function AppDataProvider({ children }) {
     };
     let payload = null;
     setUsers(prev => prev.map(u => {
-      if (String(u.id) === String(id)) {
+      if (String(u.id) === String(id) || (u._id && String(u._id) === String(id))) {
         payload = mergeAndNormalize(u);
         return payload;
       }
@@ -1914,7 +1914,7 @@ export function AppDataProvider({ children }) {
     }));
     try {
       const stored = JSON.parse(localStorage.getItem('users') || '[]');
-      const updated = stored.map(u => String(u.id) === String(id) ? mergeAndNormalize(u) : u);
+      const updated = stored.map(u => (String(u.id) === String(id) || (u._id && String(u._id) === String(id))) ? mergeAndNormalize(u) : u);
       localStorage.setItem('users', JSON.stringify(updated));
     } catch (e) { console.error(e); }
     if (payload) {
@@ -1937,8 +1937,9 @@ export function AppDataProvider({ children }) {
           }
         })();
       } else {
-        // للمستخدمين العاديين: استخدم الـ id المحلي
-        usersAPI.update(id, payload).catch(err => console.error(err));
+        // للمستخدمين العاديين: استخدم الـ _id أو id
+        const targetApiId = existingUser?._id || existingUser?.id || id;
+        usersAPI.update(targetApiId, payload).catch(err => console.error(err));
       }
     }
 

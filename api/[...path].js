@@ -24,22 +24,43 @@ function tryObjectId(id) {
   return null;
 }
 
+function toEnglishDigits(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+    .trim();
+}
+
 function buildIdQuery(rawId) {
-  const id = decodeURIComponent(String(rawId || ''));
+  const rawStr = decodeURIComponent(String(rawId || '')).trim();
+  const id = toEnglishDigits(rawStr);
   const orConditions = [
     { id: id },
     { _id: id },
     { username: id },
     { national_id: id },
     { passport_no: id },
+    { name: rawStr },
   ];
-  const objId = tryObjectId(id);
+  if (rawStr && rawStr !== id) {
+    orConditions.push({ national_id: rawStr });
+    orConditions.push({ passport_no: rawStr });
+    orConditions.push({ username: rawStr });
+  }
+  const objId = tryObjectId(id) || tryObjectId(rawStr);
   if (objId) {
     orConditions.unshift({ _id: objId });
   }
   const numId = Number(id);
-  if (!Number.isNaN(numId) && id.trim() !== '') {
+  if (!Number.isNaN(numId) && id !== '') {
     orConditions.push({ id: numId });
+    orConditions.push({ national_id: numId });
+    orConditions.push({ passport_no: numId });
+  }
+  if (rawStr && !/^\d+$/.test(id)) {
+    const escaped = rawStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    orConditions.push({ name: { $regex: new RegExp(`^${escaped}$`, 'i') } });
   }
   return { $or: orConditions };
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAppData } from '../context/AppDataContext';
 import { usersAPI, apiCall } from '../utils/apiService';
+import { normalizeExamDate, normalizeExamTime } from '../utils/placementHelpers';
 import './Auth.css';
 
 // الأدوار التي تنتمي إلى نظام شئون الأروقة
@@ -44,13 +45,23 @@ function Login() {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const toEnglishDigits = (str) => {
+    if (!str) return '';
+    return String(str)
+      .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+      .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+      .trim();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    const inputUser = String(formData.username || '').trim();
-    const inputPass = String(formData.password || '').trim();
+    const inputUserRaw = String(formData.username || '').trim();
+    const inputPassRaw = String(formData.password || '').trim();
+    const inputUser = toEnglishDigits(inputUserRaw);
+    const inputPass = toEnglishDigits(inputPassRaw);
 
     if (!inputUser || !inputPass) {
       setError('يرجى إدخال اسم المستخدم وكلمة المرور');
@@ -60,9 +71,13 @@ function Login() {
 
     // ===== 1) البحث في قائمة المستخدمين أولاً =====
     let foundUser = users.find(u => {
-      const ids = [u.national_id, u.email, u.username].map(v => String(v || '').trim());
-      const pws = [u.password, u.record_number, u.registry_no].map(v => String(v || '').trim());
-      return ids.some(id => id && id === inputUser) && pws.some(pw => pw && pw === inputPass);
+      const ids = [u.national_id, u.email, u.username].map(v => toEnglishDigits(String(v || '').trim()));
+      const rawIds = [u.national_id, u.email, u.username].map(v => String(v || '').trim());
+      const pws = [u.password, u.record_number, u.registry_no].map(v => toEnglishDigits(String(v || '').trim()));
+      const rawPws = [u.password, u.record_number, u.registry_no].map(v => String(v || '').trim());
+      const matchId = ids.some(id => id && (id === inputUser || id === inputUserRaw)) || rawIds.some(id => id && (id === inputUser || id === inputUserRaw));
+      const matchPw = pws.some(pw => pw && (pw === inputPass || pw === inputPassRaw)) || rawPws.some(pw => pw && (pw === inputPass || pw === inputPassRaw));
+      return matchId && matchPw;
     });
 
     // تحقق إضافي لدارسي العلوم الشرعية لتحديث دورهم أو التعرف عليهم مباشرة
@@ -312,12 +327,13 @@ function Login() {
 
       // البحث في المتقدمين الجدد للمنصة (يستخدم الرقم القومي أو جواز السفر كاسم مستخدم وكلمة مرور)
       if (!foundUser) {
-        const app = platformApplicants.find(a =>
-          String(a.national_id || a.passport_no || '').trim() === inputUser &&
-          String(a.national_id || a.passport_no || '').trim() === inputPass
-        );
+        const app = platformApplicants.find(a => {
+          const aNid = toEnglishDigits(String(a.national_id || a.passport_no || '').trim());
+          const aPass = toEnglishDigits(String(a.national_id || a.passport_no || '').trim());
+          return (aNid === inputUser || aNid === inputUserRaw) && (aPass === inputPass || aPass === inputPassRaw);
+        });
         if (app) {
-          const nid = String(app.national_id || app.passport_no || '').trim();
+          const nid = String(app.national_id || app.passport_no || inputUser).trim();
           foundUser = {
             name: app.name,
             email: nid,
@@ -327,6 +343,12 @@ function Login() {
             record_number: nid,
             phone: app.phone || '',
             role: 'student',
+            applicantData: {
+              ...app,
+              id: app.id || app._id,
+              exam_date: app.exam_date ? normalizeExamDate(app.exam_date) : '',
+              exam_time: app.exam_time ? normalizeExamTime(app.exam_time) : ''
+            }
           };
         }
       }
@@ -358,9 +380,9 @@ function Login() {
       try {
         // ب) البحث في المتقدمين الجدد بالخادم مباشرة
         const remoteApp = await apiCall(`/platformapplicants/${encodeURIComponent(inputUser)}`).catch(() => null);
-        if (remoteApp && (remoteApp.national_id || remoteApp.passport_no)) {
-          const nid = String(remoteApp.national_id || remoteApp.passport_no || '').trim();
-          if (nid === inputPass) {
+        if (remoteApp && (remoteApp.national_id || remoteApp.passport_no || remoteApp.name)) {
+          const nid = toEnglishDigits(String(remoteApp.national_id || remoteApp.passport_no || inputUser).trim());
+          if (nid === inputPass || nid === inputPassRaw || inputUser === inputPass) {
             foundUser = {
               name: remoteApp.name,
               email: nid,
@@ -370,6 +392,12 @@ function Login() {
               record_number: nid,
               phone: remoteApp.phone || '',
               role: 'student',
+              applicantData: {
+                ...remoteApp,
+                id: remoteApp.id || remoteApp._id,
+                exam_date: remoteApp.exam_date ? normalizeExamDate(remoteApp.exam_date) : '',
+                exam_time: remoteApp.exam_time ? normalizeExamTime(remoteApp.exam_time) : ''
+              }
             };
           }
         }
@@ -445,6 +473,36 @@ function Login() {
     }
 
     if (foundUser) {
+      // إلحاق بيانات موعد اختبار تحديد المستوى مباشرة لدارسي ومتقدمي المنصة
+      if ((foundUser.role === 'student' || !foundUser.role) && !foundUser.applicantData) {
+        const uNid = toEnglishDigits(String(foundUser.national_id || foundUser.username || foundUser.email || inputUser).trim());
+        let matchedApp = platformApplicants.find(a => {
+          const aNid = toEnglishDigits(String(a.national_id || a.passport_no || '').trim());
+          return (aNid && aNid === uNid) || (foundUser.name && a.name && normalizeArabic(a.name) === normalizeArabic(foundUser.name));
+        });
+        if (!matchedApp && uNid) {
+          try {
+            matchedApp = await apiCall(`/platformapplicants/${encodeURIComponent(uNid)}`).catch(() => null);
+          } catch {}
+        }
+        if (!matchedApp && foundUser.name) {
+          try {
+            matchedApp = await apiCall(`/platformapplicants/${encodeURIComponent(foundUser.name)}`).catch(() => null);
+          } catch {}
+        }
+        if (matchedApp) {
+          foundUser.role = 'student';
+          foundUser.applicantData = {
+            ...matchedApp,
+            id: matchedApp.id || matchedApp._id,
+            exam_date: matchedApp.exam_date ? normalizeExamDate(matchedApp.exam_date) : '',
+            exam_time: matchedApp.exam_time ? normalizeExamTime(matchedApp.exam_time) : ''
+          };
+          if (matchedApp.name) foundUser.name = matchedApp.name;
+          if (matchedApp.national_id) foundUser.national_id = matchedApp.national_id;
+        }
+      }
+
       try {
         addUser(foundUser);
       } catch (e) {}
