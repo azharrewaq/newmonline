@@ -351,6 +351,18 @@ export default async function handler(req, res) {
       });
     }
 
+    // ── GET /api/:collection/batch/:num ──────────────────────────────────────
+    if (req.method === 'GET' && segment2 === 'batch') {
+      const bNum = Math.max(1, Number(segments[3]) || 1);
+      const batchSize = 3000;
+      const docs = await col.find({})
+        .sort({ _id: 1 })
+        .skip((bNum - 1) * batchSize)
+        .limit(batchSize)
+        .toArray();
+      return res.status(200).json(docs);
+    }
+
     // ── GET /api/:collection/latest ───────────────────────────────────────────
     if (req.method === 'GET' && segment2 === 'latest') {
       const docs = await col.find({}).sort({ _id: -1 }).limit(25).toArray();
@@ -443,11 +455,9 @@ export default async function handler(req, res) {
     if (req.method === 'GET' && !segment2) {
       let queryCursor = col.find({}).sort({ _id: 1 });
       const bNum = Number(batchParam);
-      const batchSize = 1000;
+      const batchSize = 3000;
       if (!isNaN(bNum) && bNum >= 1) {
         queryCursor = queryCursor.skip((bNum - 1) * batchSize).limit(batchSize);
-      } else if (String(collectionName).toLowerCase() === 'platformapplicants') {
-        queryCursor = queryCursor.limit(1000);
       }
       const docs = await queryCursor.toArray();
 

@@ -251,21 +251,17 @@ export const platformStudentsAPI = {
 export const platformApplicantsAPI = {
   getAll: async () => {
     try {
-      const batches = await Promise.all([
-        apiCall('/platformapplicants?batch=1'),
-        apiCall('/platformapplicants?batch=2'),
-        apiCall('/platformapplicants?batch=3'),
-        apiCall('/platformapplicants?batch=4'),
-        apiCall('/platformapplicants?batch=5'),
-        apiCall('/platformapplicants?batch=6'),
+      const [b1, b2] = await Promise.all([
+        apiCall('/platformapplicants/batch/1').catch(() => null),
+        apiCall('/platformapplicants/batch/2').catch(() => null),
       ]);
-      const combined = batches.filter(Array.isArray).flat();
-      if (combined.length > 0) {
-        return combined;
+      if (Array.isArray(b1) && Array.isArray(b2)) {
+        return [...b1, ...b2];
       }
-      return await apiCall('/platformapplicants?batch=1');
+      if (Array.isArray(b1) && b1.length > 0) return b1;
+      return await apiCall('/platformapplicants');
     } catch {
-      return await apiCall('/platformapplicants?batch=1');
+      return await apiCall('/platformapplicants');
     }
   },
   create: (data) => apiCall('/platformapplicants', { method: 'POST', body: data }),
