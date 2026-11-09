@@ -2,7 +2,8 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search, Plus, Download, Upload, Trash2, Edit, Video,
-  Users, Layers, GitMerge, Clock, Calendar, Printer, RefreshCw
+  Users, Layers, GitMerge, Clock, Calendar, Printer, RefreshCw,
+  CheckCircle2, AlertCircle, Eye, Copy, Filter, X, Check
 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
@@ -17,6 +18,7 @@ import {
   normalizeApplicantGender,
   getLevelsForApplicantRowaq,
   normalizeApplicantRowaq,
+  mapApplicantRowaqToOriginal,
   normalizePreferredDays,
   PREFERRED_DAYS_OPTIONS,
   PREFERRED_TIME_OPTIONS,
@@ -46,6 +48,9 @@ function PlatformApplicantsList() {
     platformSupervisors = [],
     platformMohfezs = [],
     platformCoordinators = [],
+    platformSessions = [],
+    addPlatformStudent,
+    bulkImportPlatformStudents,
   } = useAppData();
 
   const importRef = useRef(null);
@@ -119,6 +124,20 @@ function PlatformApplicantsList() {
   const [printDateMode, setPrintDateMode] = useState('ALL'); // 'ALL' | 'SPLIT_BY_DATE' | 'CUSTOM' | 'YYYY-MM-DD'
   const [printCustomDate, setPrintCustomDate] = useState('');
   const [groupRowDateMap, setGroupRowDateMap] = useState({}); // { [group_no]: 'ALL' | 'SPLIT_BY_DATE' | 'YYYY-MM-DD' }
+
+  // خيارات المجموعات المتوافقة (5 دارسين لكل مجموعة للدمج في الحلقات الأصلية)
+  const [compatStatusFilter, setCompatStatusFilter] = useState('all'); // 'all' | 'complete' | 'pending'
+  const [compatRowaqFilter, setCompatRowaqFilter] = useState('');
+  const [compatLevelFilter, setCompatLevelFilter] = useState('');
+  const [compatTimeFilter, setCompatTimeFilter] = useState('');
+  const [compatSearch, setCompatSearch] = useState('');
+  const [compatPage, setCompatPage] = useState(1);
+  const [selectedCompatGroup, setSelectedCompatGroup] = useState(null);
+  const [mergeModalGroup, setMergeModalGroup] = useState(null);
+  const [mergeTargetSessionNo, setMergeTargetSessionNo] = useState('');
+  const [mergeIsSubmitting, setMergeIsSubmitting] = useState(false);
+  const [copiedGroupDisplayNo, setCopiedGroupDisplayNo] = useState(null);
+  const compatPageSize = 25;
 
   // تحديد المجموعات التابعة للمحفظ أو المنسق أو المشرف الحالي
   const myGroupNumbers = useMemo(() => {
@@ -779,30 +798,275 @@ function PlatformApplicantsList() {
     e.target.value = '';
   };
 
-  // تجميع المتقدمين المتوافقين في المستوى والرواق والسورة والأيام والتوقيت لدمجهم في الحلقات الأصلية لاحقاً
-  const compatibleBuckets = useMemo(() => {
-    const map = {};
+  // تجميع المتقدمين المتوافقين في (نوع الرواق + المستوى المحدد + السورة المتوقف عندها + التوقيت المختار)
+  // وتقسيم كل فئة متطابقة إلى مجموعات سعة كل منها 5 دارسين متوافقين بالضبط لدمجهم في الحلقات الأصلية
+  const {
+    allCompatibleGroups,
+    completeGroups,
+    pendingGroups,
+    completeGroupsCount,
+    pendingGroupsCount,
+    totalGroupedApplicants,
+    availableCompatLevels,
+  } = useMemo(() => {
+    const bucketsMap = {};
+
     platformApplicants.forEach(a => {
-      const r = normalizeApplicantRowaq(a.rowaq, a.gender);
-      const effLevel = a.tested_level || a.applied_level || a.level || '';
+      const r = normalizeApplicantRowaq(a.rowaq, a.gender) || a.rowaq || '';
+      const effLevel = (a.tested_level || a.applied_level || a.level || '').trim();
       if (!r || !effLevel) return;
-      const normDays = normalizePreferredDays(a.preferred_days);
-      const key = `${r} || ${effLevel} || ${a.stopped_surah || 'غير محدد'} || ${normDays || 'غير محدد'} || ${a.preferred_time || 'غير محدد'}`;
-      if (!map[key]) {
-        map[key] = {
-          key,
+
+      const surah = (a.stopped_surah || 'غير محدد').trim();
+      const prefTime = (a.preferred_time || 'غير محدد').trim();
+
+      // المعايير الأربعة المتوافقة للدمج: نوع الرواق + المستوى + السورة + التوقيت
+      const bucketKey = `${r}__${effLevel}__${surah}__${prefTime}`;
+
+      if (!bucketsMap[bucketKey]) {
+        bucketsMap[bucketKey] = {
+          bucketKey,
           rowaq: r,
           level: effLevel,
-          stopped_surah: a.stopped_surah || '-',
-          preferred_days: normDays || '-',
-          preferred_time: a.preferred_time || '-',
-          members: [],
+          stopped_surah: surah,
+          preferred_time: prefTime,
+          applicants: [],
         };
       }
-      map[key].members.push(a);
+      bucketsMap[bucketKey].applicants.push(a);
     });
-    return Object.values(map).sort((a, b) => b.members.length - a.members.length);
+
+    const groups = [];
+    const levelsSet = new Set();
+    let compCount = 0;
+    let pendCount = 0;
+    let totalGrouped = 0;
+
+    // الفرز: الفئات الأكثر عدداً تأتي أولاً
+    const sortedBuckets = Object.values(bucketsMap).sort((a, b) => b.applicants.length - a.applicants.length);
+
+    sortedBuckets.forEach((bucket, bIdx) => {
+      levelsSet.add(bucket.level);
+      const total = bucket.applicants.length;
+      let partIdx = 1;
+
+      // تقسيم كل فئة مطابقة إلى مجموعات من 5 دارسين متوافقين
+      for (let i = 0; i < total; i += 5) {
+        const chunk = bucket.applicants.slice(i, i + 5);
+        const isComplete = chunk.length === 5;
+        if (isComplete) compCount++;
+        else pendCount++;
+        totalGrouped += chunk.length;
+
+        groups.push({
+          id: `${bucket.bucketKey}_part_${partIdx}`,
+          rowaq: bucket.rowaq,
+          level: bucket.level,
+          stopped_surah: bucket.stopped_surah,
+          preferred_time: bucket.preferred_time,
+          members: chunk,
+          count: chunk.length,
+          isComplete,
+          bucketIndex: bIdx + 1,
+          partIndex: partIdx++,
+        });
+      }
+    });
+
+    // ترتيب المجموعات: المكتملة أولاً (5/5) ثم قيد الاكتمال (<5)
+    groups.sort((a, b) => {
+      if (a.isComplete !== b.isComplete) return a.isComplete ? -1 : 1;
+      if (a.rowaq !== b.rowaq) return a.rowaq.localeCompare(b.rowaq, 'ar');
+      if (a.level !== b.level) return a.level.localeCompare(b.level, 'ar');
+      return b.count - a.count;
+    });
+
+    // رقم مسلسل نهائي متتابع لكل مجموعة
+    groups.forEach((g, idx) => {
+      g.displayNo = idx + 1;
+    });
+
+    const completeList = groups.filter(g => g.isComplete);
+    const pendingList = groups.filter(g => !g.isComplete);
+
+    return {
+      allCompatibleGroups: groups,
+      completeGroups: completeList,
+      pendingGroups: pendingList,
+      completeGroupsCount: compCount,
+      pendingGroupsCount: pendCount,
+      totalGroupedApplicants: totalGrouped,
+      availableCompatLevels: Array.from(levelsSet).sort(),
+    };
   }, [platformApplicants]);
+
+  // تصفية المجموعات المتوافقة
+  const filteredCompatibleGroups = useMemo(() => {
+    return allCompatibleGroups.filter(g => {
+      if (compatStatusFilter === 'complete' && !g.isComplete) return false;
+      if (compatStatusFilter === 'pending' && g.isComplete) return false;
+      if (compatRowaqFilter && g.rowaq !== compatRowaqFilter) return false;
+      if (compatLevelFilter && g.level !== compatLevelFilter) return false;
+      if (compatTimeFilter && g.preferred_time !== compatTimeFilter) return false;
+      if (compatSearch) {
+        const q = normalizeArabic(compatSearch.trim());
+        const matchSurah = normalizeArabic(g.stopped_surah).includes(q);
+        const matchTime = normalizeArabic(g.preferred_time).includes(q);
+        const matchNo = String(g.displayNo).includes(q);
+        const matchMember = g.members.some(m =>
+          normalizeArabic(m.name || '').includes(q) ||
+          String(m.national_id || m.passport_no || '').includes(q) ||
+          String(m.phone || '').includes(q)
+        );
+        if (!matchSurah && !matchTime && !matchNo && !matchMember) return false;
+      }
+      return true;
+    });
+  }, [allCompatibleGroups, compatStatusFilter, compatRowaqFilter, compatLevelFilter, compatTimeFilter, compatSearch]);
+
+  const totalCompatPages = Math.max(1, Math.ceil(filteredCompatibleGroups.length / compatPageSize));
+  const paginatedCompatibleGroups = useMemo(() => {
+    const start = (compatPage - 1) * compatPageSize;
+    return filteredCompatibleGroups.slice(start, start + compatPageSize);
+  }, [filteredCompatibleGroups, compatPage, compatPageSize]);
+
+  // تصدير كشف مجموعة واحدة (5 دارسين)
+  const exportSingleCompatibleGroup = (group) => {
+    const rows = group.members.map((m, idx) => ({
+      'م': idx + 1,
+      'رقم المجموعة المتوافقة': `مجموعة متوافقة ${group.displayNo}`,
+      'حالة المجموعة': group.isComplete ? 'مكتملة (5 دارسين)' : `قيد الاكتمال (${group.count}/5)`,
+      'اسم الدارس': m.name || '',
+      'الرقم القومي / جواز السفر': m.national_id || m.passport_no || '',
+      'رقم التليفون': m.phone || '',
+      'المحافظة': m.governorate || '',
+      'الرواق': group.rowaq,
+      'المستوى': m.tested_level || group.level,
+      'السورة المتوقف عندها': group.stopped_surah,
+      'التوقيت المختار': group.preferred_time,
+      'الأيام المناسبة للدارس': m.preferred_days || '',
+    }));
+    exportToXLSX(rows, `مجموعة_متوافقة_${group.displayNo}_(5_دارسين)`, `مجموعة ${group.displayNo}`);
+  };
+
+  // تصدير جميع المجموعات المكتملة (5/5)
+  const exportAllCompleteGroups = () => {
+    if (completeGroups.length === 0) {
+      alert('لا توجد مجموعات مكتملة (5/5 دارسين) حالياً للتصدير');
+      return;
+    }
+    const rows = [];
+    completeGroups.forEach(g => {
+      g.members.forEach((m, idx) => {
+        rows.push({
+          'رقم المجموعة المتوافقة (5 دارسين)': `مجموعة ${g.displayNo}`,
+          'م داخل المجموعة': idx + 1,
+          'اسم الدارس': m.name || '',
+          'الرقم القومي / جواز السفر': m.national_id || m.passport_no || '',
+          'رقم التليفون': m.phone || '',
+          'المحافظة': m.governorate || '',
+          'الرواق': g.rowaq,
+          'المستوى المحدد': m.tested_level || g.level,
+          'السورة المتوقف عندها': g.stopped_surah,
+          'التوقيت المختار': g.preferred_time,
+          'الأيام المناسبة للدارس': m.preferred_days || '',
+        });
+      });
+    });
+    exportToXLSX(rows, `المجموعات_المكتملة_${completeGroups.length}_مجموعة_(5_دارسين)`, 'المجموعات المكتملة 5 دارسين');
+  };
+
+  // تصدير كافة المجموعات (المكتملة وقيد الاكتمال)
+  const exportAllCompatibleGroups = () => {
+    if (allCompatibleGroups.length === 0) {
+      alert('لا توجد مجموعات متوافقة للتصدير');
+      return;
+    }
+    const rows = [];
+    allCompatibleGroups.forEach(g => {
+      g.members.forEach((m, idx) => {
+        rows.push({
+          'رقم المجموعة المتوافقة': `مجموعة ${g.displayNo}`,
+          'حالة الاكتمال': g.isComplete ? 'مكتملة (5/5)' : `قيد الاكتمال (${g.count}/5)`,
+          'م داخل المجموعة': idx + 1,
+          'اسم الدارس': m.name || '',
+          'الرقم القومي / جواز السفر': m.national_id || m.passport_no || '',
+          'رقم التليفون': m.phone || '',
+          'المحافظة': m.governorate || '',
+          'الرواق': g.rowaq,
+          'المستوى المحدد': m.tested_level || g.level,
+          'السورة المتوقف عندها': g.stopped_surah,
+          'التوقيت المختار': g.preferred_time,
+          'الأيام المناسبة للدارس': m.preferred_days || '',
+        });
+      });
+    });
+    exportToXLSX(rows, `جميع_المجموعات_المتوافقة_${allCompatibleGroups.length}_مجموعة`, 'المجموعات المتوافقة');
+  };
+
+  // نسخ بيانات الدارسين للمحفظ / الواتساب
+  const copyGroupRoster = (group) => {
+    const lines = [
+      `📋 مجموعة متوافقة رقم (${group.displayNo}) - ${group.isComplete ? 'مكتملة (5 دارسين)' : `قيد الاكتمال (${group.count}/5)`}`,
+      `🔹 الرواق: ${group.rowaq}`,
+      `🔹 المستوى: ${group.level}`,
+      `🔹 السورة المتوقف عندها: ${group.stopped_surah}`,
+      `🔹 التوقيت المختار: ${group.preferred_time}`,
+      `──────── الدارسون (${group.count}) ────────`,
+    ];
+    group.members.forEach((m, i) => {
+      lines.push(`${i + 1}- ${m.name || 'بدون اسم'} | رقم: ${m.national_id || m.passport_no || '-'} | هاتف: ${m.phone || '-'} | الأيام: ${m.preferred_days || '-'}`);
+    });
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopiedGroupDisplayNo(group.displayNo);
+    setTimeout(() => setCopiedGroupDisplayNo(null), 2500);
+  };
+
+  // دمج الدارسين الخمسة في حلقة أصلية
+  const handleConfirmMergeSession = async () => {
+    if (!mergeModalGroup) return;
+    const targetSession = String(mergeTargetSessionNo || '').trim();
+    if (!targetSession) {
+      alert('يرجى اختيار أو إدخال رقم الحلقة الأصلية للتسكين');
+      return;
+    }
+    try {
+      setMergeIsSubmitting(true);
+      const originalMeta = mapApplicantRowaqToOriginal(mergeModalGroup.rowaq);
+      const newStudents = mergeModalGroup.members.map(m => ({
+        name: m.name || '',
+        national_id: m.national_id || m.passport_no || '',
+        passport_no: m.passport_no || '',
+        phone: m.phone || '',
+        country: m.country || 'مصر',
+        governorate: m.governorate || '',
+        rowaq: originalMeta.rowaq,
+        student_type: originalMeta.student_type,
+        gender: m.gender || originalMeta.gender,
+        level: m.tested_level || mergeModalGroup.level,
+        stopped_surah: mergeModalGroup.stopped_surah,
+        session_no: targetSession,
+        status: 'منتظم',
+        notes: `تم التسكين من المجموعات المتوافقة رقم ${mergeModalGroup.displayNo} (التوقيت: ${mergeModalGroup.preferred_time})`,
+      }));
+
+      if (typeof bulkImportPlatformStudents === 'function') {
+        await bulkImportPlatformStudents(newStudents);
+      } else if (typeof addPlatformStudent === 'function') {
+        for (const s of newStudents) {
+          addPlatformStudent(s);
+        }
+      }
+
+      alert(`تم بنجاح تسكين (${newStudents.length}) دارسين في الحلقة الأصلية رقم [${targetSession}]`);
+      setMergeModalGroup(null);
+      setMergeTargetSessionNo('');
+    } catch (err) {
+      console.error('Merge error:', err);
+      alert('حدث خطأ أثناء دمج الدارسين: ' + err.message);
+    } finally {
+      setMergeIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="management-page">
@@ -833,8 +1097,19 @@ function PlatformApplicantsList() {
           <button
             className={`btn ${activeTab === 'compatible' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('compatible')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
           >
-            <GitMerge size={16} /> المجموعات المتوافقة للدمج في الحلقات الأصلية ({compatibleBuckets.length})
+            <GitMerge size={16} /> المجموعات المتوافقة للدمج (5 دارسين)
+            <span style={{
+              background: '#10b981',
+              color: '#ffffff',
+              padding: '2px 8px',
+              borderRadius: 12,
+              fontSize: 11,
+              fontWeight: 'bold',
+            }}>
+              {completeGroupsCount} مكتملة
+            </span>
           </button>
         )}
       </div>
@@ -1793,70 +2068,672 @@ function PlatformApplicantsList() {
         </div>
       )}
 
-      {/* ───────── التبويب الثالث: المجموعات المتوافقة لدمجها في الحلقات الأصلية ───────── */}
+      {/* ───────── التبويب الثالث: المجموعات المتوافقة لدمجها في الحلقات الأصلية (5 دارسين) ───────── */}
       {activeTab === 'compatible' && isAdminOrSupervisor && (
         <div className="box-card" style={{ padding: 20 }}>
-          <h3 style={{ fontSize: 17, marginBottom: 8 }}>المجموعات المتوافقة (حسب الرواق والمستوى والسورة والأيام والتوقيت)</h3>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-            يتم تجميع الدارسين الذين تم تحديد مستواهم وتتشابه اختياراتهم تلقائياً هنا لدمج كل مجموعة متوافقة مع بعضها في الحلقات الأصلية.
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+            <div>
+              <h3 style={{ fontSize: 18, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <GitMerge size={20} style={{ color: '#10b981' }} />
+                المجموعات المتوافقة للدمج في الحلقات الأصلية (5 دارسين لكل مجموعة)
+              </h3>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+                تجميع وتوزيع الدارسين المتوافقين تماماً في: <strong>نوع الرواق</strong>، <strong>المستوى</strong>، <strong>السورة المتوقف عندها</strong>، و<strong>التوقيت المختار</strong> إلى مجموعات سعة كل منها (5) دارسين لتسكينهم فوراً في الحلقات الأصلية.
+              </p>
+            </div>
 
+            {/* أزرار التصدير الشامل */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary"
+                style={{ background: '#10b981', borderColor: '#10b981', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'bold' }}
+                onClick={exportAllCompleteGroups}
+              >
+                <Download size={15} /> تصدير جميع المجموعات المكتملة ({completeGroupsCount} مجموعة / {completeGroupsCount * 5} دارس)
+              </button>
+              <button
+                className="btn btn-outline"
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                onClick={exportAllCompatibleGroups}
+              >
+                <Download size={15} /> تصدير كافة المجموعات ({allCompatibleGroups.length})
+              </button>
+            </div>
+          </div>
+
+          {/* بطاقات الإحصائيات الأربعة */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, marginBottom: 20 }}>
+            <div style={{
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.35)',
+              borderRadius: 10,
+              padding: '14px 16px',
+            }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <CheckCircle2 size={15} style={{ color: '#10b981' }} /> مجموعات مكتملة (5 / 5)
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#10b981' }}>
+                {completeGroupsCount} <span style={{ fontSize: 13, fontWeight: 'normal' }}>مجموعة جاهزة</span>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.12)',
+              border: '1px solid rgba(59, 130, 246, 0.35)',
+              borderRadius: 10,
+              padding: '14px 16px',
+            }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Users size={15} style={{ color: '#3b82f6' }} /> دارسون في مجموعات مكتملة
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#3b82f6' }}>
+                {completeGroupsCount * 5} <span style={{ fontSize: 13, fontWeight: 'normal' }}>دارس مؤهل</span>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              borderRadius: 10,
+              padding: '14px 16px',
+            }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <AlertCircle size={15} style={{ color: '#f59e0b' }} /> مجموعات قيد الاكتمال (&lt; 5)
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f59e0b' }}>
+                {pendingGroupsCount} <span style={{ fontSize: 13, fontWeight: 'normal' }}>مجموعة تنتظر</span>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'rgba(168, 85, 247, 0.12)',
+              border: '1px solid rgba(168, 85, 247, 0.35)',
+              borderRadius: 10,
+              padding: '14px 16px',
+            }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Layers size={15} style={{ color: '#a855f7' }} /> إجمالي الدارسين الموزعين
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#a855f7' }}>
+                {totalGroupedApplicants} <span style={{ fontSize: 13, fontWeight: 'normal' }}>دارس موزّع</span>
+              </div>
+            </div>
+          </div>
+
+          {/* شريط الفلاتر والبحث */}
+          <div className="search-section box-card" style={{ flexDirection: 'column', alignItems: 'stretch', marginBottom: 16, padding: 14 }}>
+            {/* أزرار حالة الاكتمال */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)', marginLeft: 8 }}>حالة المجموعة:</span>
+              <button
+                type="button"
+                className={`btn ${compatStatusFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                style={{ padding: '4px 12px', fontSize: 12 }}
+                onClick={() => { setCompatStatusFilter('all'); setCompatPage(1); }}
+              >
+                جميع المجموعات ({allCompatibleGroups.length})
+              </button>
+              <button
+                type="button"
+                className={`btn ${compatStatusFilter === 'complete' ? 'btn-primary' : 'btn-outline'}`}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  ...(compatStatusFilter === 'complete' ? { background: '#10b981', borderColor: '#10b981' } : {})
+                }}
+                onClick={() => { setCompatStatusFilter('complete'); setCompatPage(1); }}
+              >
+                المكتملة فقط (5/5) ({completeGroupsCount})
+              </button>
+              <button
+                type="button"
+                className={`btn ${compatStatusFilter === 'pending' ? 'btn-primary' : 'btn-outline'}`}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  ...(compatStatusFilter === 'pending' ? { background: '#f59e0b', borderColor: '#f59e0b' } : {})
+                }}
+                onClick={() => { setCompatStatusFilter('pending'); setCompatPage(1); }}
+              >
+                قيد الاكتمال (&lt; 5) ({pendingGroupsCount})
+              </button>
+            </div>
+
+            {/* صف الفلاتر التفصيلية */}
+            <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+              <div className="form-group">
+                <label style={{ fontSize: 12, marginBottom: 4 }}>نوع الرواق:</label>
+                <select
+                  value={compatRowaqFilter}
+                  onChange={e => { setCompatRowaqFilter(e.target.value); setCompatPage(1); }}
+                  className="form-control"
+                  style={{ fontSize: 13 }}
+                >
+                  <option value="">-- جميع الأروقة --</option>
+                  <option value="رواق القرآن الكريم ( أطفال )">رواق القرآن الكريم ( أطفال )</option>
+                  <option value="رواق القرآن الكريم كبار ( رجال )">رواق القرآن الكريم كبار ( رجال )</option>
+                  <option value="رواق القرآن الكريم كبار ( سيدات )">رواق القرآن الكريم كبار ( سيدات )</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontSize: 12, marginBottom: 4 }}>المستوى:</label>
+                <select
+                  value={compatLevelFilter}
+                  onChange={e => { setCompatLevelFilter(e.target.value); setCompatPage(1); }}
+                  className="form-control"
+                  style={{ fontSize: 13 }}
+                >
+                  <option value="">-- جميع المستويات --</option>
+                  {availableCompatLevels.map(lvl => (
+                    <option key={lvl} value={lvl}>{lvl}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontSize: 12, marginBottom: 4 }}>التوقيت المختار:</label>
+                <select
+                  value={compatTimeFilter}
+                  onChange={e => { setCompatTimeFilter(e.target.value); setCompatPage(1); }}
+                  className="form-control"
+                  style={{ fontSize: 13 }}
+                >
+                  <option value="">-- جميع التوقيتات --</option>
+                  {PREFERRED_TIME_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ flex: 1.5 }}>
+                <label style={{ fontSize: 12, marginBottom: 4 }}>بحث (اسم، رقم قومي، سورة):</label>
+                <input
+                  type="text"
+                  value={compatSearch}
+                  onChange={e => { setCompatSearch(e.target.value); setCompatPage(1); }}
+                  placeholder="ابحث بالاسم أو السورة أو التوقيت..."
+                  className="form-control"
+                  style={{ fontSize: 13 }}
+                />
+              </div>
+
+              {(compatRowaqFilter || compatLevelFilter || compatTimeFilter || compatSearch || compatStatusFilter !== 'all') && (
+                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: 12, height: 38 }}
+                    onClick={() => {
+                      setCompatRowaqFilter('');
+                      setCompatLevelFilter('');
+                      setCompatTimeFilter('');
+                      setCompatSearch('');
+                      setCompatStatusFilter('all');
+                      setCompatPage(1);
+                    }}
+                  >
+                    إعادة تعيين الفلاتر
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* جدول المجموعات المتوافقة (5 دارسين لكل مجموعة) */}
           <div className="table-wrapper">
             <table className="management-table">
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'center' }}>م</th>
+                  <th style={{ textAlign: 'center', width: 60 }}>م</th>
+                  <th style={{ textAlign: 'center', minWidth: 140 }}>رقم المجموعة</th>
                   <th style={{ textAlign: 'center' }}>الرواق</th>
-                  <th style={{ textAlign: 'center' }}>المستوى</th>
+                  <th style={{ textAlign: 'center' }}>المستوى المحدد</th>
                   <th style={{ textAlign: 'center' }}>السورة المتوقف عندها</th>
-                  <th style={{ textAlign: 'center' }}>الأيام المناسبة</th>
-                  <th style={{ textAlign: 'center' }}>التوقيت المناسب</th>
-                  <th style={{ textAlign: 'center' }}>عدد الدارسين المتوافقين</th>
-                  <th style={{ textAlign: 'center' }}>تصدير</th>
+                  <th style={{ textAlign: 'center' }}>التوقيت المختار</th>
+                  <th style={{ textAlign: 'center', width: 130 }}>حالة الاكتمال</th>
+                  <th style={{ textAlign: 'center', minWidth: 260 }}>أعضاء المجموعة (الـ 5 دارسين)</th>
+                  <th style={{ textAlign: 'center', minWidth: 210 }}>الإجراءات</th>
                 </tr>
               </thead>
               <tbody>
-                {compatibleBuckets.length === 0 ? (
+                {filteredCompatibleGroups.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                      لا توجد مجموعات مصنفة بعد — ستظهر تلقائياً بمجرد رفع وتحديد مستويات الدارسين.
+                    <td colSpan="9" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                      لا توجد مجموعات مطابقة للفلاتر المحددة حالياً.
                     </td>
                   </tr>
                 ) : (
-                  compatibleBuckets.map((b, idx) => (
-                    <tr key={b.key}>
-                      <td style={{ textAlign: 'center' }}>{idx + 1}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{b.rowaq}</td>
-                      <td style={{ textAlign: 'center' }}>{b.level}</td>
-                      <td style={{ textAlign: 'center' }}>{b.stopped_surah}</td>
-                      <td style={{ textAlign: 'center' }}>{b.preferred_days}</td>
-                      <td style={{ textAlign: 'center' }}>{b.preferred_time}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#10b981' }}>{b.members.length} دارس</td>
+                  paginatedCompatibleGroups.map((g) => (
+                    <tr key={g.id}>
+                      <td style={{ textAlign: 'center' }}>{g.displayNo}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                        مجموعة متوافقة {g.displayNo}
+                      </td>
                       <td style={{ textAlign: 'center' }}>
-                        <button
-                          className="btn btn-outline"
-                          style={{ padding: '4px 10px', fontSize: 12 }}
-                          onClick={() => {
-                            const rows = b.members.map(m => ({
-                              'الاسم': m.name,
-                              'الرقم القومي أو جواز السفر': m.national_id || m.passport_no || '',
-                              'الرواق': b.rowaq,
-                              'المستوى وفق الاختبار': m.tested_level || b.level || '',
-                              'السورة المتوقف عندها': b.stopped_surah,
-                              'الأيام المناسبة': b.preferred_days,
-                              'التوقيت المناسب': b.preferred_time,
-                            }));
-                            exportToXLSX(rows, `مجموعة_متوافقة_${b.rowaq}_${b.level}`, 'مجموعة متوافقة');
-                          }}
-                        >
-                          <Download size={14} /> تصدير المجموعة
-                        </button>
+                        <span style={{
+                          fontSize: 12,
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          background: g.rowaq.includes('أطفال') ? 'rgba(59, 130, 246, 0.15)' : g.rowaq.includes('سيدات') ? 'rgba(236, 72, 153, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                          color: g.rowaq.includes('أطفال') ? '#60a5fa' : g.rowaq.includes('سيدات') ? '#f472b6' : '#34d399',
+                          fontWeight: 500,
+                        }}>
+                          {g.rowaq}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center', fontWeight: 500 }}>{g.level}</td>
+                      <td style={{ textAlign: 'center' }}>{g.stopped_surah}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ fontSize: 12, color: 'var(--accent, #e5a93c)', fontWeight: 500 }}>
+                          {g.preferred_time}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        {g.isComplete ? (
+                          <span style={{
+                            background: 'rgba(16, 185, 129, 0.18)',
+                            color: '#10b981',
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                            padding: '4px 10px',
+                            borderRadius: 16,
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}>
+                            <CheckCircle2 size={13} /> مكتملة (5 / 5)
+                          </span>
+                        ) : (
+                          <span style={{
+                            background: 'rgba(245, 158, 11, 0.18)',
+                            color: '#f59e0b',
+                            border: '1px solid rgba(245, 158, 11, 0.35)',
+                            padding: '4px 10px',
+                            borderRadius: 16,
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}>
+                            <AlertCircle size={13} /> قيد الاكتمال ({g.count} / 5)
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {g.members.map((m, mIdx) => (
+                            <div
+                              key={m.id || m.national_id || mIdx}
+                              style={{
+                                fontSize: 12,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                background: 'rgba(255, 255, 255, 0.04)',
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                              }}
+                            >
+                              <span style={{ fontWeight: 500 }}>{mIdx + 1}. {m.name || 'بدون اسم'}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }} dir="ltr">{m.phone || ''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            onClick={() => setSelectedCompatGroup(g)}
+                            title="عرض تفاصيل الدارسين الخمسة"
+                          >
+                            <Eye size={13} /> التفاصيل
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            onClick={() => exportSingleCompatibleGroup(g)}
+                            title="تصدير كشف هذه المجموعة إكسيل"
+                          >
+                            <Download size={13} /> إكسيل
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            onClick={() => copyGroupRoster(g)}
+                            title="نسخ بيانات الدارسين للواتساب أو تيمز"
+                          >
+                            {copiedGroupDisplayNo === g.displayNo ? (
+                              <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <Check size={13} /> تم النسخ
+                              </span>
+                            ) : (
+                              <>
+                                <Copy size={13} /> نسخ
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: 12,
+                              background: '#3b82f6',
+                              borderColor: '#3b82f6',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}
+                            onClick={() => { setMergeModalGroup(g); setMergeTargetSessionNo(''); }}
+                            title="تسكين ودمج الدارسين في حلقة أصلية"
+                          >
+                            <GitMerge size={13} /> دمج بالحلقة
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* الترقيم والتنقل بين الصفحات */}
+          {totalCompatPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                عرض {((compatPage - 1) * compatPageSize) + 1} إلى {Math.min(compatPage * compatPageSize, filteredCompatibleGroups.length)} من إجمالي {filteredCompatibleGroups.length} مجموعة
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ padding: '4px 10px', fontSize: 12 }}
+                  disabled={compatPage <= 1}
+                  onClick={() => setCompatPage(p => Math.max(1, p - 1))}
+                >
+                  السابق
+                </button>
+                <span style={{ fontSize: 13, padding: '0 8px' }}>
+                  صفحة {compatPage} من {totalCompatPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ padding: '4px 10px', fontSize: 12 }}
+                  disabled={compatPage >= totalCompatPages}
+                  onClick={() => setCompatPage(p => Math.min(totalCompatPages, p + 1))}
+                >
+                  التالي
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ───────── نافذة منبثقة: تفاصيل المجموعة والـ 5 دارسين ───────── */}
+      {selectedCompatGroup && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: 16,
+        }}>
+          <div className="box-card" style={{
+            width: '100%',
+            maxWidth: 780,
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: 24,
+            borderRadius: 12,
+            position: 'relative',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, borderBottom: '1px solid var(--border-color)', paddingBottom: 12 }}>
+              <div>
+                <h3 style={{ fontSize: 18, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>كشف مجموعة متوافقة رقم {selectedCompatGroup.displayNo}</span>
+                  {selectedCompatGroup.isComplete ? (
+                    <span style={{ fontSize: 12, color: '#10b981', background: 'rgba(16,185,129,0.15)', padding: '2px 8px', borderRadius: 10 }}>
+                      مكتملة (5 / 5 دارسين)
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: '#f59e0b', background: 'rgba(245,158,11,0.15)', padding: '2px 8px', borderRadius: 10 }}>
+                      قيد الاكتمال ({selectedCompatGroup.count} / 5)
+                    </span>
+                  )}
+                </h3>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', gap: 15, flexWrap: 'wrap', marginTop: 6 }}>
+                  <span>الرواق: <strong>{selectedCompatGroup.rowaq}</strong></span>
+                  <span>المستوى: <strong>{selectedCompatGroup.level}</strong></span>
+                  <span>السورة: <strong>{selectedCompatGroup.stopped_surah}</strong></span>
+                  <span>التوقيت المختار: <strong>{selectedCompatGroup.preferred_time}</strong></span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ padding: '4px 8px', borderRadius: '50%' }}
+                onClick={() => setSelectedCompatGroup(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="table-wrapper" style={{ marginBottom: 16 }}>
+              <table className="management-table">
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'center', width: 40 }}>م</th>
+                    <th>اسم الدارس</th>
+                    <th style={{ textAlign: 'center' }}>الرقم القومي / جواز السفر</th>
+                    <th style={{ textAlign: 'center' }}>رقم التليفون</th>
+                    <th style={{ textAlign: 'center' }}>المحافظة</th>
+                    <th style={{ textAlign: 'center' }}>الأيام المفضلة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedCompatGroup.members.map((m, idx) => (
+                    <tr key={m.id || idx}>
+                      <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
+                      <td style={{ fontWeight: 600 }}>{m.name || 'بدون اسم'}</td>
+                      <td style={{ textAlign: 'center' }} dir="ltr">{m.national_id || m.passport_no || '-'}</td>
+                      <td style={{ textAlign: 'center' }} dir="ltr">
+                        {m.phone ? (
+                          <a
+                            href={`https://wa.me/20${String(m.phone).replace(/^0+/, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#10b981', textDecoration: 'none', fontWeight: 500 }}
+                          >
+                            {m.phone}
+                          </a>
+                        ) : '-'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>{m.governorate || '-'}</td>
+                      <td style={{ textAlign: 'center', fontSize: 12 }}>{m.preferred_days || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => exportSingleCompatibleGroup(selectedCompatGroup)}
+                >
+                  <Download size={14} /> تصدير إكسيل
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => copyGroupRoster(selectedCompatGroup)}
+                >
+                  {copiedGroupDisplayNo === selectedCompatGroup.displayNo ? (
+                    <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Check size={14} /> تم النسخ
+                    </span>
+                  ) : (
+                    <>
+                      <Copy size={14} /> نسخ بيانات الدارسين
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ background: '#3b82f6', borderColor: '#3b82f6', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => {
+                    const g = selectedCompatGroup;
+                    setSelectedCompatGroup(null);
+                    setMergeModalGroup(g);
+                    setMergeTargetSessionNo('');
+                  }}
+                >
+                  <GitMerge size={14} /> دمج في حلقة أصلية
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setSelectedCompatGroup(null)}
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───────── نافذة منبثقة: دمج المجموعة في حلقة أصلية ───────── */}
+      {mergeModalGroup && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: 16,
+        }}>
+          <div className="box-card" style={{
+            width: '100%',
+            maxWidth: 620,
+            padding: 24,
+            borderRadius: 12,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border-color)', paddingBottom: 10 }}>
+              <h3 style={{ fontSize: 17, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <GitMerge size={18} style={{ color: '#3b82f6' }} />
+                تسكين ودمج المجموعة {mergeModalGroup.displayNo} ({mergeModalGroup.count} دارسين)
+              </h3>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ padding: '3px 8px', borderRadius: '50%' }}
+                onClick={() => setMergeModalGroup(null)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
+              <div><strong>الرواق:</strong> {mergeModalGroup.rowaq}</div>
+              <div><strong>المستوى:</strong> {mergeModalGroup.level}</div>
+              <div><strong>السورة المتوقف عندها:</strong> {mergeModalGroup.stopped_surah}</div>
+              <div><strong>التوقيت المختار:</strong> {mergeModalGroup.preferred_time}</div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 6, display: 'block' }}>
+                اختر الحلقة الأصلية لتسكين الدارسين الخمسة فيها:
+              </label>
+              <select
+                value={mergeTargetSessionNo}
+                onChange={e => setMergeTargetSessionNo(e.target.value)}
+                className="form-control"
+                style={{ fontSize: 14, marginBottom: 8 }}
+              >
+                <option value="">-- اختر رقم الحلقة من القائمة المتاحة --</option>
+                {platformSessions.map(s => (
+                  <option key={s.id || s.session_no} value={s.session_no}>
+                    حلقة رقم {s.session_no} — المحفظ: {s.mohfez_name || 'غير محدد'} ({s.rowaq || ''})
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                أو اكتب رقم الحلقة يدوياً في حال إنشاء حلقة جديدة:
+              </div>
+              <input
+                type="text"
+                value={mergeTargetSessionNo}
+                onChange={e => setMergeTargetSessionNo(e.target.value)}
+                placeholder="أدخل رقم الحلقة الأصلية (مثال: 101)"
+                className="form-control"
+                style={{ marginTop: 6, fontSize: 13 }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 6 }}>
+                الدارسون الخمسة الذين سيتم تسكينهم في الحلقة:
+              </div>
+              <div style={{ maxHeight: 130, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 6, padding: 6 }}>
+                {mergeModalGroup.members.map((m, i) => (
+                  <div key={i} style={{ fontSize: 12, padding: '3px 6px', borderBottom: i < mergeModalGroup.members.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                    {i + 1}- {m.name} ({m.phone || 'بدون هاتف'})
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setMergeModalGroup(null)}
+                disabled={mergeIsSubmitting}
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ background: '#3b82f6', borderColor: '#3b82f6' }}
+                onClick={handleConfirmMergeSession}
+                disabled={mergeIsSubmitting || !mergeTargetSessionNo}
+              >
+                {mergeIsSubmitting ? 'جاري التسكين والدمج...' : 'تأكيد تسكين الدارسين في الحلقة'}
+              </button>
+            </div>
           </div>
         </div>
       )}
