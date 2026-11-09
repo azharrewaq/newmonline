@@ -1108,23 +1108,6 @@ function PlatformApplicantsList() {
                   <Link to="/platform-applicants/create" className="btn btn-primary" style={{ textDecoration: 'none' }}>
                     <Plus size={16} /> إضافة متقدم
                   </Link>
-                  <button
-                    className="btn btn-gold-outline"
-                    onClick={handleRescheduleDay9}
-                    title="ترحيل مواعيد اختبار دارسي يوم 9 نوفمبر إلى ما بعد اليوم الأخير لكل مجموعة"
-                    style={{ backgroundColor: 'rgba(212, 175, 55, 0.18)', borderColor: 'var(--accent-gold)', fontWeight: 'bold' }}
-                  >
-                    <Calendar size={16} /> ترحيل يوم 9 لما بعد اليوم الأخير
-                  </button>
-                  <button
-                    className="btn btn-gold-outline"
-                    onClick={handleSplitQuarterTimes}
-                    disabled={isSplitting}
-                    title="تقسيم مواعيد اختبار الدارسين في كل مجموعة (ساعتين) إلى 4 مواعيد بالتساوي (نصف ساعة لكل ربع دارسين)"
-                    style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: '#3b82f6', fontWeight: 'bold' }}
-                  >
-                    <Clock size={16} /> {isSplitting ? 'جارٍ تقسيم المواعيد...' : 'تقسيم مواعيد المجموعات (نصف ساعة)'}
-                  </button>
                   <button className="btn btn-gold-outline" onClick={() => importRef.current.click()}>
                     <Upload size={16} /> استيراد من إكسيل
                   </button>
