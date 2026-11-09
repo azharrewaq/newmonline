@@ -9,7 +9,12 @@ let cachedDb = null;
 async function connectToDatabase() {
   if (cachedDb) return cachedDb;
   if (!MONGODB_URI) throw new Error('MONGODB_URI environment variable is not set');
-  const client = new MongoClient(MONGODB_URI, { serverSelectionTimeoutMS: 8000 });
+  const client = new MongoClient(MONGODB_URI, {
+    serverSelectionTimeoutMS: 8000,
+    connectTimeoutMS: 10000,
+    family: 4,
+    autoSelectFamily: false,
+  });
   await client.connect();
   cachedDb = client.db(DB_NAME);
   return cachedDb;
@@ -60,7 +65,7 @@ function buildIdQuery(rawId) {
   }
   if (rawStr && !/^\d+$/.test(id)) {
     const escaped = rawStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    orConditions.push({ name: { $regex: new RegExp(`^${escaped}$`, 'i') } });
+    orConditions.push({ name: { $regex: new RegExp(`^${escaped}`, 'i') } });
   }
   return { $or: orConditions };
 }

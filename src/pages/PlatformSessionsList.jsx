@@ -58,6 +58,41 @@ function PlatformSessionsList() {
       .trim();
   };
 
+  const matchByName = (nameA, nameB) => {
+    const nA = normalizeArabic(nameA);
+    const nB = normalizeArabic(nameB);
+    if (!nA || !nB) return false;
+    if (nA === nB) return true;
+    if (nA.startsWith(nB) || nB.startsWith(nA)) return true;
+    const wordsA = nA.split(/\s+/).filter(Boolean);
+    const wordsB = nB.split(/\s+/).filter(Boolean);
+    if (wordsA.length >= 2 && wordsB.length >= 2) {
+      if (wordsA[0] === wordsB[0] && wordsA[1] === wordsB[1]) {
+        if (wordsA.length >= 3 && wordsB.length >= 3) {
+          return wordsA[2] === wordsB[2];
+        }
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const matchedUserInList = useMemo(() => {
+    if (!currentUser) return null;
+    return users.find(u => {
+      const uNid = toEnglishDigits(String(u.national_id || u.username || '').trim());
+      const curNid = toEnglishDigits(String(currentUser.national_id || currentUser.username || '').trim());
+      if (curNid && uNid && curNid === uNid) return true;
+      if (currentUser.name && u.name && matchByName(currentUser.name, u.name)) return true;
+      return false;
+    });
+  }, [users, currentUser]);
+
+  const effectiveNid = toEnglishDigits(
+    String(currentUser?.national_id || matchedUserInList?.national_id || currentUser?.username || matchedUserInList?.username || '').trim()
+  );
+  const effectiveName = currentUser?.name || matchedUserInList?.name || '';
+
   const [remoteApplicant, setRemoteApplicant] = useState(currentUser?.applicantData || null);
   const [applicantLoading, setApplicantLoading] = useState(false);
   const defaultPlacementGroups = useMemo(() => createDefaultPlacementGroups(), []);
@@ -66,22 +101,21 @@ function PlatformSessionsList() {
     if (currentUser?.applicantData?.exam_date || currentUser?.applicantData?.group_no) {
       return currentUser.applicantData;
     }
-    if (remoteApplicant) return remoteApplicant;
-    const userNid = toEnglishDigits(String(currentUser?.national_id || currentUser?.username || '').trim());
-    if (userNid && platformApplicants?.length > 0) {
+    if (remoteApplicant?.exam_date || remoteApplicant?.group_no) return remoteApplicant;
+
+    if (effectiveNid && platformApplicants?.length > 0) {
       const found = platformApplicants.find(a => {
         const aNid = toEnglishDigits(String(a.national_id || a.passport_no || '').trim());
-        return aNid && aNid === userNid;
+        return aNid && aNid === effectiveNid;
       });
       if (found) return found;
     }
-    if (currentUser?.name && platformApplicants?.length > 0) {
-      const curNorm = normalizeArabic(currentUser.name);
-      const foundByName = platformApplicants.find(a => a.name && normalizeArabic(a.name) === curNorm);
+    if (effectiveName && platformApplicants?.length > 0) {
+      const foundByName = platformApplicants.find(a => a.name && matchByName(a.name, effectiveName));
       if (foundByName) return foundByName;
     }
-    return currentUser?.applicantData || null;
-  }, [currentUser, platformApplicants, remoteApplicant]);
+    return remoteApplicant || currentUser?.applicantData || null;
+  }, [currentUser, matchedUserInList, effectiveNid, effectiveName, platformApplicants, remoteApplicant]);
 
   useEffect(() => {
     if (!isStudent) return;
@@ -91,13 +125,12 @@ function PlatformSessionsList() {
     const fetchApplicantData = async () => {
       setApplicantLoading(true);
       try {
-        const userNid = toEnglishDigits(String(currentUser?.national_id || currentUser?.username || '').trim());
         let res = null;
-        if (userNid) {
-          res = await apiCall(`/platformapplicants/${encodeURIComponent(userNid)}`).catch(() => null);
+        if (effectiveNid) {
+          res = await apiCall(`/platformapplicants/${encodeURIComponent(effectiveNid)}`).catch(() => null);
         }
-        if (!res && currentUser?.name) {
-          res = await apiCall(`/platformapplicants/${encodeURIComponent(currentUser.name)}`).catch(() => null);
+        if (!res && effectiveName) {
+          res = await apiCall(`/platformapplicants/${encodeURIComponent(effectiveName)}`).catch(() => null);
         }
         if (isMounted && res && (res.name || res.national_id || res.group_no)) {
           const normRes = {
@@ -126,7 +159,7 @@ function PlatformSessionsList() {
     };
     fetchApplicantData();
     return () => { isMounted = false; };
-  }, [isStudent, currentUser?.national_id, currentUser?.username, currentUser?.name, myApplicant]);
+  }, [isStudent, effectiveNid, effectiveName, myApplicant]);
 
   // زر الدخول للحلقة: يُفعَّل قبل الموعد بربع ساعة ويتوقف مع انتهاء وقت الحلقة (الأدمن مستثنى)
   const renderJoinButton = (s) => {
@@ -296,8 +329,8 @@ function PlatformSessionsList() {
       <div className="management-page">
         <div className="page-header">
           <div className="title-section">
-            <h2>{scopedSessions.length > 0 ? 'تقرير الحلقة' : (myApplicant ? 'اختبار تحديد المستوى' : (applicantLoading ? 'اختبار تحديد المستوى' : 'تقرير الحلقة'))}</h2>
-            <p>{scopedSessions.length > 0 ? 'آخر تقرير سجّله المحفظ لحلقتك' : (myApplicant ? 'بيانات لجنة وموعد اختبار تحديد المستوى الخاص بك' : (applicantLoading ? 'جاري استرجاع بيانات لجنة وموعد الاختبار...' : 'آخر تقرير سجّله المحفظ لحلقتك'))}</p>
+            <h2>{scopedSessions.length > 0 ? 'تقرير الحلقة' : 'اختبار تحديد المستوى'}</h2>
+            <p>{scopedSessions.length > 0 ? 'آخر تقرير سجّله المحفظ لحلقتك' : 'بيانات لجنة وموعد اختبار تحديد المستوى الخاص بك'}</p>
           </div>
         </div>
 
@@ -549,13 +582,15 @@ function PlatformSessionsList() {
         )}
 
         {scopedSessions.length === 0 && !myApplicant ? (
-          applicantLoading ? (
+          (applicantLoading || platformApplicants.length === 0) ? (
             <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--accent-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontSize: 16, fontWeight: '700' }}>
               <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
               جاري استرجاع بيانات لجنة وموعد اختبار تحديد المستوى...
             </div>
           ) : (
-            <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>لا توجد حلقة مسجلة لك.</div>
+            <div className="box-card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+              لم يتم العثور على موعد اختبار مسجل لرقمك القومي حتى الآن. إذا قمت بالتسجيل حديثاً يُرجى مراجعة إدارة المنصة.
+            </div>
           )
         ) : scopedSessions.map(s => {
           const reports = sessionReports
