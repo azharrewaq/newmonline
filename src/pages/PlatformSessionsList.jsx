@@ -344,24 +344,23 @@ function PlatformSessionsList() {
       <div className="management-page">
         <div className="page-header">
           <div className="title-section">
-            <h2>{scopedSessions.length > 0 ? 'تقرير الحلقة' : 'موعد اختبار تحديد المستوى'}</h2>
-            <p>{scopedSessions.length > 0 ? 'آخر تقرير سجّله المحفظ لحلقتك' : 'بيانات لجنة وموعد اختبار تحديد المستوى ورابط الدخول الخاص بك'}</p>
+            <h2>موعد اختبار تحديد المستوى</h2>
+            <p>بيانات لجنة وموعد اختبار تحديد المستوى ورابط الدخول الخاص بك</p>
           </div>
         </div>
 
-        {scopedSessions.length === 0 && (
-          <div className="box-card" style={{ padding: 28, marginBottom: 24, border: '2px solid var(--accent-gold)', backgroundColor: 'var(--bg-card)' }}>
-            {/* ترويسة إخطار موعد اختبار تحديد المستوى */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 14,
-              paddingBottom: 18,
-              marginBottom: 20,
-              borderBottom: '2px solid var(--border-subtle)'
-            }}>
+        <div className="box-card" style={{ padding: 28, marginBottom: 24, border: '2px solid var(--accent-gold)', backgroundColor: 'var(--bg-card)' }}>
+          {/* ترويسة إخطار موعد اختبار تحديد المستوى */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 14,
+            paddingBottom: 18,
+            marginBottom: 20,
+            borderBottom: '2px solid var(--border-subtle)'
+          }}>
               <div>
                 <div style={{ fontSize: 15, color: 'var(--accent-gold)', fontWeight: '800', marginBottom: 6 }}>
                   الجامع الأزهر الشريف — الإدارة العامة للجامع الأزهر (إدارة شئون الأروقة)
@@ -598,6 +597,11 @@ function PlatformSessionsList() {
               )}
             </div>
           </div>
+
+        {scopedSessions.length > 0 && (
+          <h3 style={{ fontSize: 18, fontWeight: '800', margin: '24px 0 16px', color: 'var(--text-primary)' }}>
+            تقارير الحلقات المسجلة
+          </h3>
         )}
 
         {scopedSessions.map(s => {

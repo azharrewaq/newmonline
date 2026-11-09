@@ -63,6 +63,15 @@ function buildIdQuery(rawId) {
     orConditions.push({ national_id: numId });
     orConditions.push({ passport_no: numId });
   }
+  const groupMatch = rawStr.match(/^(?:pg-)?(\d+)$/i);
+  if (groupMatch) {
+    const gNum = Number(groupMatch[1]);
+    orConditions.push({ group_no: gNum });
+    orConditions.push({ group_no: String(gNum) });
+    orConditions.push({ id: `pg-${gNum}` });
+    orConditions.push({ id: gNum });
+    orConditions.push({ id: String(gNum) });
+  }
   if (rawStr && !/^\d+$/.test(id)) {
     const escaped = rawStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     orConditions.push({ name: { $regex: new RegExp(`^${escaped}`, 'i') } });
@@ -112,6 +121,23 @@ export default async function handler(req, res) {
       if (!Array.isArray(data) || data.length === 0) {
         return res.status(200).json({ inserted: 0 });
       }
+
+      if (String(collectionName).toLowerCase() === 'placementgroups') {
+        const bulkOps = data.map(item => {
+          const { _id, ...safeItem } = item;
+          const gNum = Number(safeItem.group_no || String(safeItem.id || '').replace(/\D/g, ''));
+          return {
+            updateOne: {
+              filter: { $or: [{ group_no: gNum }, { group_no: String(gNum) }, { id: `pg-${gNum}` }] },
+              update: { $set: { ...safeItem, group_no: gNum, id: `pg-${gNum}` } },
+              upsert: true
+            }
+          };
+        });
+        const result = await col.bulkWrite(bulkOps, { ordered: false });
+        return res.status(201).json({ inserted: (result.upsertedCount || 0) + (result.modifiedCount || 0) });
+      }
+
       const result = await col.insertMany(data);
       return res.status(201).json({ inserted: result.insertedCount });
     }
@@ -381,6 +407,36 @@ export default async function handler(req, res) {
         queryCursor = queryCursor.skip(7000).limit(3500);
       }
       const docs = await queryCursor.toArray();
+
+      if (String(collectionName).toLowerCase() === 'placementgroups' && docs.length > 0) {
+        const groupMap = new Map();
+        for (const doc of docs) {
+          const gNo = Number(doc.group_no || String(doc.id || '').replace(/\D/g, ''));
+          if (!gNo) continue;
+          if (!groupMap.has(gNo)) {
+            groupMap.set(gNo, { ...doc, id: doc.id || `pg-${gNo}`, group_no: gNo });
+          } else {
+            const existing = groupMap.get(gNo);
+            groupMap.set(gNo, {
+              ...existing,
+              ...doc,
+              id: existing.id || doc.id || `pg-${gNo}`,
+              group_no: gNo,
+              mohfez: doc.mohfez || existing.mohfez || '',
+              coordinator: doc.coordinator || existing.coordinator || '',
+              scientific_supervisor: doc.scientific_supervisor || existing.scientific_supervisor || '',
+              technical_supervisor: doc.technical_supervisor || existing.technical_supervisor || '',
+              teams_link: doc.teams_link || existing.teams_link || '',
+              time_start: doc.time_start || existing.time_start || '17:30',
+              time_end: doc.time_end || existing.time_end || '21:00',
+              shift_label: doc.shift_label || existing.shift_label || 'من 05:30 م إلى 09:00 م',
+            });
+          }
+        }
+        const consolidatedDocs = Array.from(groupMap.values()).sort((a, b) => Number(a.group_no) - Number(b.group_no));
+        return res.status(200).json(consolidatedDocs);
+      }
+
       const acceptEncoding = String(req.headers['accept-encoding'] || '');
       const jsonStr = JSON.stringify(docs);
       if (acceptEncoding.includes('gzip') && jsonStr.length > 2048) {
@@ -395,6 +451,18 @@ export default async function handler(req, res) {
     // ── POST /api/:collection ──────────────────────────────────────────────────
     if (req.method === 'POST' && !segment2) {
       const doc = req.body || {};
+      if (String(collectionName).toLowerCase() === 'placementgroups' && (doc.group_no || doc.id)) {
+        const gNum = Number(doc.group_no || String(doc.id || '').replace(/\D/g, ''));
+        const { _id, ...safeDoc } = doc;
+        safeDoc.group_no = gNum;
+        safeDoc.id = safeDoc.id || `pg-${gNum}`;
+        await col.updateOne(
+          { $or: [{ group_no: gNum }, { group_no: String(gNum) }, { id: `pg-${gNum}` }] },
+          { $set: safeDoc },
+          { upsert: true }
+        );
+        return res.status(201).json(safeDoc);
+      }
       const result = await col.insertOne(doc);
       return res.status(201).json({ ...doc, _id: result.insertedId });
     }
@@ -411,15 +479,39 @@ export default async function handler(req, res) {
       const updateData = req.body || {};
       const { _id, ...safeUpdate } = updateData;
 
+      let query = buildIdQuery(segment2);
+      const isPG = String(collectionName).toLowerCase() === 'placementgroups';
+      if (isPG) {
+        const groupMatch = segment2.match(/^(?:pg-)?(\d+)$/i) || (safeUpdate.group_no ? [null, safeUpdate.group_no] : null);
+        if (groupMatch) {
+          const gNum = Number(groupMatch[1]);
+          safeUpdate.group_no = gNum;
+          safeUpdate.id = safeUpdate.id || `pg-${gNum}`;
+          query = {
+            $or: [
+              ...query.$or,
+              { group_no: gNum },
+              { group_no: String(gNum) },
+              { id: `pg-${gNum}` },
+            ]
+          };
+        }
+      }
+
       // أولاً: تحقق من وجود الوثيقة قبل الـ upsert لتفادي إنشاء سجلات مكررة
-      const existingDoc = await col.findOne(buildIdQuery(segment2));
+      const existingDoc = await col.findOne(query);
 
       if (existingDoc) {
-        // الوثيقة موجودة — حدِّثها مباشرة بالـ _id الفعلي لضمان تحديث نفس السجل
-        const result = await col.updateOne(
-          { _id: existingDoc._id },
-          { $set: safeUpdate }
-        );
+        // الوثيقة موجودة — حدِّثها مباشرة لضمان تحديث السجل
+        let result;
+        if (isPG) {
+          result = await col.updateMany(query, { $set: safeUpdate });
+        } else {
+          result = await col.updateOne(
+            { _id: existingDoc._id },
+            { $set: safeUpdate }
+          );
+        }
 
         // ── مزامنة تعديل الرقم القومي بين المستخدمين والمنصة في الاتجاهين ──
         try {
@@ -482,6 +574,15 @@ export default async function handler(req, res) {
       } else {
         // الوثيقة غير موجودة — أنشئها
         const newDoc = { ...safeUpdate };
+        if (isPG) {
+          if (!newDoc.group_no && segment2) {
+            const m = segment2.match(/^(?:pg-)?(\d+)$/i);
+            if (m) newDoc.group_no = Number(m[1]);
+          }
+          if (newDoc.group_no && !newDoc.id) {
+            newDoc.id = `pg-${newDoc.group_no}`;
+          }
+        }
         const result = await col.insertOne(newDoc);
         return res.status(200).json({
           message: 'Created',

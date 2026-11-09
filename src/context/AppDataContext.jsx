@@ -466,6 +466,46 @@ export function AppDataProvider({ children }) {
   const deletedApplicantIdsRef = useRef(new Set());
   const pendingApplicantOpsRef = useRef(0);
 
+  // دمج مجموعات تحديد المستوى وحماية التسكين اليدوي (المحفظين والمنسقين والروابط) من الحذف أو الاستبدال
+  const mergePlacementGroupLists = (localList, remoteList) => {
+    const defaults = createDefaultPlacementGroups();
+    const baseLocal = (Array.isArray(localList) && localList.length === 40)
+      ? localList
+      : (Array.isArray(localList) && localList.length > 0 ? localList : defaults);
+
+    if (!Array.isArray(remoteList) || remoteList.length === 0) {
+      return baseLocal;
+    }
+
+    const merged = baseLocal.map(loc => {
+      const gNo = Number(loc.group_no);
+      const rem = remoteList.find(r =>
+        (r.group_no !== undefined && Number(r.group_no) === gNo) ||
+        (r.id && (String(r.id) === String(loc.id) || String(r.id) === `pg-${gNo}`)) ||
+        (r._id && loc._id && String(r._id) === String(loc._id))
+      );
+      if (!rem) return loc;
+
+      return {
+        ...rem,
+        ...loc,
+        _id: rem._id || loc._id,
+        id: loc.id || rem.id || (rem._id ? String(rem._id) : `pg-${gNo}`),
+        group_no: gNo,
+        mohfez: loc.mohfez || rem.mohfez || '',
+        coordinator: loc.coordinator || rem.coordinator || '',
+        scientific_supervisor: loc.scientific_supervisor || rem.scientific_supervisor || '',
+        technical_supervisor: loc.technical_supervisor || rem.technical_supervisor || '',
+        teams_link: loc.teams_link || rem.teams_link || '',
+        time_start: loc.time_start || rem.time_start || '17:30',
+        time_end: loc.time_end || rem.time_end || '21:00',
+        shift_label: loc.shift_label || rem.shift_label || 'من 05:30 م إلى 09:00 م',
+      };
+    });
+
+    return merged.sort((a, b) => (Number(a.group_no) || 0) - (Number(b.group_no) || 0));
+  };
+
   useEffect(() => {
     const syncWithBackend = async () => {
       try {
@@ -474,15 +514,68 @@ export function AppDataProvider({ children }) {
         const syncCollection = async (api, state, setState, key, mapper = null) => {
           const remoteData = await api.getAll().catch(() => null);
           if (Array.isArray(remoteData)) {
-            let normalizedData = remoteData.map(item => ({
+            let normalizedRemote = remoteData.map(item => ({
               ...item,
               id: item.id || item._id
             }));
-            if (mapper) normalizedData = normalizedData.map(mapper);
-            setState(normalizedData);
-            saveToLocalStorage(key, normalizedData);
+            if (mapper) normalizedRemote = normalizedRemote.map(mapper);
+
+            // الحصول على القائمة المحلية من التخزين لحماية الإضافات اليدوية من الاختفاء
+            const localStored = getFromLocalStorage(key, []);
+            const currentLocal = Array.isArray(localStored) && localStored.length > 0 ? localStored : (Array.isArray(state) ? state : []);
+
+            // تجميع المعرفات والأرقام القومية للبيانات القادمة من السيرفر
+            const remoteNids = new Set(
+              normalizedRemote
+                .map(r => String(r.national_id || r.passport_no || r.username || '').trim())
+                .filter(Boolean)
+            );
+            const remoteIds = new Set(
+              normalizedRemote
+                .flatMap(r => [r.id ? String(r.id) : null, r._id ? String(r._id) : null])
+                .filter(Boolean)
+            );
+
+            // الكشف عن العناصر المحلية غير الموجودة في السيرفر بعد
+            const missingLocals = currentLocal.filter(loc => {
+              const locNid = String(loc.national_id || loc.passport_no || loc.username || '').trim();
+              const locId = loc.id ? String(loc.id) : null;
+              const locUnderscoreId = loc._id ? String(loc._id) : null;
+
+              if (locNid && remoteNids.has(locNid)) return false;
+              if (locId && remoteIds.has(locId)) return false;
+              if (locUnderscoreId && remoteIds.has(locUnderscoreId)) return false;
+              return true;
+            });
+
+            // مزامنة العناصر المحلية المفقودة للسيرفر تلقائياً لضمان عدم ضياعها
+            if (missingLocals.length > 0) {
+              console.log(`Preserving ${missingLocals.length} local items for ${key} and syncing to server...`);
+              missingLocals.forEach(loc => {
+                api.create(loc).catch(() => {});
+              });
+            }
+
+            // دمج التعديلات المحلية الحديثة مع السجلات البعيدة
+            const merged = [
+              ...normalizedRemote.map(rem => {
+                const locMatch = currentLocal.find(loc => {
+                  const remNid = String(rem.national_id || rem.passport_no || rem.username || '').trim();
+                  const locNid = String(loc.national_id || loc.passport_no || loc.username || '').trim();
+                  if (remNid && locNid && remNid === locNid) return true;
+                  return (rem.id && loc.id && String(rem.id) === String(loc.id)) ||
+                         (rem._id && loc._id && String(rem._id) === String(loc._id));
+                });
+                if (!locMatch) return rem;
+                return { ...rem, ...locMatch };
+              }),
+              ...missingLocals
+            ];
+
+            setState(merged);
+            saveToLocalStorage(key, merged);
             if (remoteData.length > 0) {
-              console.log(`✓ Fetched ${normalizedData.length} items for ${key} from MongoDB`);
+              console.log(`✓ Fetched & merged ${merged.length} items for ${key}`);
             }
           }
         };
@@ -552,6 +645,21 @@ export function AppDataProvider({ children }) {
             // أنشئ الأدمن في MongoDB حتى يكون متاحاً للأجهزة الأخرى
             usersAPI.create(fallbackAdmin).catch(() => {});
           }
+
+          // دمج أي مستخدمين محليين أُضيفوا حديثاً ولم يظهروا بعد في السيرفر
+          const remoteUserNids = new Set(
+            finalUsers.map(u => String(u.national_id || u.username || u.email || '').trim().toLowerCase()).filter(Boolean)
+          );
+          const localUsers = getFromLocalStorage('users', []);
+          const missingLocalUsers = localUsers.filter(lu => {
+            const k = String(lu.national_id || lu.username || lu.email || '').trim().toLowerCase();
+            return k && !remoteUserNids.has(k);
+          });
+          if (missingLocalUsers.length > 0) {
+            finalUsers = [...finalUsers, ...missingLocalUsers];
+            missingLocalUsers.forEach(lu => usersAPI.create(lu).catch(() => {}));
+          }
+
           setUsers(finalUsers);
           saveToLocalStorage('users', finalUsers);
           console.log(`✓ Fetched ${finalUsers.length} users from MongoDB (deduped, admin password preserved)`);
@@ -584,20 +692,34 @@ export function AppDataProvider({ children }) {
           };
           return rescheduleApplicantDay9(norm);
         });
-        // مزامنة الـ 40 مجموعة لتحديد المستوى (20 مجموعة 6-8 م + 20 مجموعة 8-10 م)
+        // مزامنة الـ 40 مجموعة لتحديد المستوى مع الحفاظ على التسكين اليدوي
         const remotePG = await placementGroupsAPI.getAll().catch(() => null);
+        const storedPG = getFromLocalStorage('placementGroups', createDefaultPlacementGroups());
         if (remotePG) {
           if (remotePG.length === 0) {
-            const defaults = createDefaultPlacementGroups();
+            const defaults = (Array.isArray(storedPG) && storedPG.length === 40) ? storedPG : createDefaultPlacementGroups();
             placementGroupsAPI.bulkImport(defaults).catch(() => {});
             setPlacementGroups(defaults);
             saveToLocalStorage('placementGroups', defaults);
           } else {
-            const normPG = remotePG
-              .map(g => ({ ...g, id: g.id || g._id }))
-              .sort((a, b) => (Number(a.group_no) || 0) - (Number(b.group_no) || 0));
-            setPlacementGroups(normPG);
-            saveToLocalStorage('placementGroups', normPG);
+            const mergedPG = mergePlacementGroupLists(storedPG, remotePG);
+            // إذا كان هناك تسكين محلي غير موجود على السيرفر، يتم إرساله
+            mergedPG.forEach(g => {
+              const rem = remotePG.find(r => Number(r.group_no) === Number(g.group_no));
+              if (rem) {
+                const diff = {};
+                if (g.mohfez && !rem.mohfez) diff.mohfez = g.mohfez;
+                if (g.coordinator && !rem.coordinator) diff.coordinator = g.coordinator;
+                if (g.scientific_supervisor && !rem.scientific_supervisor) diff.scientific_supervisor = g.scientific_supervisor;
+                if (g.technical_supervisor && !rem.technical_supervisor) diff.technical_supervisor = g.technical_supervisor;
+                if (g.teams_link && !rem.teams_link) diff.teams_link = g.teams_link;
+                if (Object.keys(diff).length > 0) {
+                  placementGroupsAPI.update(rem._id || rem.id || `pg-${g.group_no}`, { ...diff, group_no: g.group_no }).catch(() => {});
+                }
+              }
+            });
+            setPlacementGroups(mergedPG);
+            saveToLocalStorage('placementGroups', mergedPG);
           }
         }
         await syncCollection(platformRowaqsAPI, platformRowaqs, setPlatformRowaqs, 'platformRowaqs');
@@ -1389,13 +1511,17 @@ export function AppDataProvider({ children }) {
   };
 
   const addCoordinator = (coordinator) => {
-    const newCoordinator = { ...coordinator, id: String(Date.now() + Math.random()) };
-    setCoordinators(prev => [...prev, newCoordinator]);
+    const newCoordinator = { ...coordinator, id: coordinator.id || String(Date.now() + Math.random()) };
+    setCoordinators(prev => {
+      const next = [...prev, newCoordinator];
+      saveToLocalStorage('coordinators', next);
+      return next;
+    });
     coordinatorsAPI.create(newCoordinator).catch(err => console.error(err));
   };
   const updateCoordinator = (id, updatedCoordinator) => {
     let resolvedIsArchived = undefined;
-    const current = coordinators.find(c => String(c.id) === String(id));
+    const current = coordinators.find(c => String(c.id) === String(id) || String(c._id) === String(id));
     const oldNid = current ? String(current.national_id || '').trim() : '';
     const newNid = String(updatedCoordinator.national_id || '').trim();
 
@@ -1418,7 +1544,11 @@ export function AppDataProvider({ children }) {
     const payload = resolvedIsArchived !== undefined 
       ? { ...updatedCoordinator, isArchived: resolvedIsArchived }
       : updatedCoordinator;
-    setCoordinators(prev => prev.map(c => String(c.id) === String(id) ? { ...c, ...payload } : c));
+    setCoordinators(prev => {
+      const next = prev.map(c => (String(c.id) === String(id) || (c._id && String(c._id) === String(id))) ? { ...c, ...payload } : c);
+      saveToLocalStorage('coordinators', next);
+      return next;
+    });
     coordinatorsAPI.update(id, payload).catch(err => console.error(err));
 
     if (oldNid && newNid && oldNid !== newNid) {
@@ -1435,13 +1565,17 @@ export function AppDataProvider({ children }) {
   };
 
   const addMohfez = (mohfez) => {
-    const newMohfez = { ...mohfez, id: String(Date.now() + Math.random()) };
-    setMohfezs(prev => [...prev, newMohfez]);
+    const newMohfez = { ...mohfez, id: mohfez.id || String(Date.now() + Math.random()) };
+    setMohfezs(prev => {
+      const next = [...prev, newMohfez];
+      saveToLocalStorage('mohfezs', next);
+      return next;
+    });
     mohfezsAPI.create(newMohfez).catch(err => console.error(err));
   };
   const updateMohfez = (id, updatedMohfez) => {
     let resolvedIsArchived = undefined;
-    const current = mohfezs.find(m => String(m.id) === String(id));
+    const current = mohfezs.find(m => String(m.id) === String(id) || String(m._id) === String(id));
     const oldNid = current ? String(current.national_id || '').trim() : '';
     const newNid = String(updatedMohfez.national_id || '').trim();
 
@@ -1464,7 +1598,11 @@ export function AppDataProvider({ children }) {
     const payload = resolvedIsArchived !== undefined 
       ? { ...updatedMohfez, isArchived: resolvedIsArchived }
       : updatedMohfez;
-    setMohfezs(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...payload } : m));
+    setMohfezs(prev => {
+      const next = prev.map(m => (String(m.id) === String(id) || (m._id && String(m._id) === String(id))) ? { ...m, ...payload } : m);
+      saveToLocalStorage('mohfezs', next);
+      return next;
+    });
     mohfezsAPI.update(id, payload).catch(err => console.error(err));
 
     if (oldNid && newNid && oldNid !== newNid) {
@@ -2038,11 +2176,30 @@ export function AppDataProvider({ children }) {
       }
 
       if (Array.isArray(remotePG) && remotePG.length > 0) {
-        const normPG = remotePG
-          .map(g => ({ ...g, id: g.id || g._id }))
-          .sort((a, b) => (Number(a.group_no) || 0) - (Number(b.group_no) || 0));
-        setPlacementGroups(normPG);
-        saveToLocalStorage('placementGroups', normPG);
+        setPlacementGroups(prev => {
+          const stored = getFromLocalStorage('placementGroups', prev);
+          const current = (Array.isArray(prev) && prev.length > 0) ? prev : stored;
+          const merged = mergePlacementGroupLists(current, remotePG);
+
+          // إرسال أي تسكين محلي غير مسجل في السيرفر بعد
+          merged.forEach(g => {
+            const rem = remotePG.find(r => Number(r.group_no) === Number(g.group_no));
+            if (rem) {
+              const diff = {};
+              if (g.mohfez && !rem.mohfez) diff.mohfez = g.mohfez;
+              if (g.coordinator && !rem.coordinator) diff.coordinator = g.coordinator;
+              if (g.scientific_supervisor && !rem.scientific_supervisor) diff.scientific_supervisor = g.scientific_supervisor;
+              if (g.technical_supervisor && !rem.technical_supervisor) diff.technical_supervisor = g.technical_supervisor;
+              if (g.teams_link && !rem.teams_link) diff.teams_link = g.teams_link;
+              if (Object.keys(diff).length > 0) {
+                placementGroupsAPI.update(rem._id || rem.id || `pg-${g.group_no}`, { ...diff, group_no: g.group_no }).catch(() => {});
+              }
+            }
+          });
+
+          saveToLocalStorage('placementGroups', merged);
+          return merged;
+        });
       }
     };
 
@@ -2063,18 +2220,25 @@ export function AppDataProvider({ children }) {
 
   const updatePlacementGroup = (id, updatedData) => {
     const targetGroup = placementGroups.find(g => String(g.id) === String(id) || String(g._id) === String(id) || String(g.group_no) === String(id));
-    const remoteId = targetGroup?._id || targetGroup?.id || id;
+    const gNo = targetGroup?.group_no || (String(id).replace(/\D/g, '') ? Number(String(id).replace(/\D/g, '')) : null);
+    const remoteId = targetGroup?._id || targetGroup?.id || (gNo ? `pg-${gNo}` : id);
+    const fullPayload = {
+      ...(gNo ? { group_no: gNo, id: `pg-${gNo}` } : {}),
+      ...updatedData
+    };
+
     setPlacementGroups(prev => {
       const next = prev.map(g =>
         (String(g.id) === String(id) || String(g._id) === String(id) || (targetGroup && Number(g.group_no) === Number(targetGroup.group_no)))
-          ? { ...g, ...updatedData }
+          ? { ...g, ...fullPayload }
           : g
       );
       saveToLocalStorage('placementGroups', next);
       return next;
     });
+
     pendingApplicantOpsRef.current += 1;
-    placementGroupsAPI.update(remoteId, updatedData)
+    placementGroupsAPI.update(remoteId, fullPayload)
       .catch(err => console.error(err))
       .finally(() => {
         pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
@@ -2218,17 +2382,26 @@ export function AppDataProvider({ children }) {
   };
 
   const addPlatformTopManagement = (item) => {
-    const newItem = { ...item, id: String(Date.now()) };
-    setPlatformTopManagement(prev => [...prev, newItem]);
+    const newItem = { ...item, id: item.id || String(Date.now() + Math.random()) };
+    setPlatformTopManagement(prev => {
+      const next = [...prev, newItem];
+      saveToLocalStorage('platformTopManagement', next);
+      return next;
+    });
     platformTopManagementAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformTopManagement = (id, updatedItem) => {
     const existing = platformTopManagement.find(m => String(m.id) === String(id) || String(m._id) === String(id));
     const oldNid = existing ? String(existing.national_id || '').trim() : '';
     const newNid = String(updatedItem.national_id || '').trim();
+    const remoteId = existing?._id || existing?.id || id;
 
-    setPlatformTopManagement(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
-    platformTopManagementAPI.update(id, updatedItem).catch(err => console.error(err));
+    setPlatformTopManagement(prev => {
+      const next = prev.map(m => (String(m.id) === String(id) || (m._id && String(m._id) === String(id))) ? { ...m, ...updatedItem } : m);
+      saveToLocalStorage('platformTopManagement', next);
+      return next;
+    });
+    platformTopManagementAPI.update(remoteId, updatedItem).catch(err => console.error(err));
 
     if (oldNid && newNid && oldNid !== newNid) {
       syncNationalIdChange(oldNid, newNid, 'entity');
@@ -2244,17 +2417,26 @@ export function AppDataProvider({ children }) {
   };
 
   const addPlatformSupervisor = (item) => {
-    const newItem = { ...item, id: String(Date.now()) };
-    setPlatformSupervisors(prev => [...prev, newItem]);
+    const newItem = { ...item, id: item.id || String(Date.now() + Math.random()) };
+    setPlatformSupervisors(prev => {
+      const next = [...prev, newItem];
+      saveToLocalStorage('platformSupervisors', next);
+      return next;
+    });
     platformSupervisorsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformSupervisor = (id, updatedItem) => {
     const existing = platformSupervisors.find(m => String(m.id) === String(id) || String(m._id) === String(id));
     const oldNid = existing ? String(existing.national_id || '').trim() : '';
     const newNid = String(updatedItem.national_id || '').trim();
+    const remoteId = existing?._id || existing?.id || id;
 
-    setPlatformSupervisors(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
-    platformSupervisorsAPI.update(id, updatedItem).catch(err => console.error(err));
+    setPlatformSupervisors(prev => {
+      const next = prev.map(m => (String(m.id) === String(id) || (m._id && String(m._id) === String(id))) ? { ...m, ...updatedItem } : m);
+      saveToLocalStorage('platformSupervisors', next);
+      return next;
+    });
+    platformSupervisorsAPI.update(remoteId, updatedItem).catch(err => console.error(err));
 
     if (oldNid && newNid && oldNid !== newNid) {
       syncNationalIdChange(oldNid, newNid, 'entity');
@@ -2271,16 +2453,25 @@ export function AppDataProvider({ children }) {
 
   const addPlatformCoordinator = (item) => {
     const newItem = { ...item, id: item.id || String(Date.now() + Math.random()) };
-    setPlatformCoordinators(prev => [...prev, newItem]);
+    setPlatformCoordinators(prev => {
+      const next = [...prev, newItem];
+      saveToLocalStorage('platformCoordinators', next);
+      return next;
+    });
     platformCoordinatorsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformCoordinator = (id, updatedItem) => {
     const existing = platformCoordinators.find(m => String(m.id) === String(id) || String(m._id) === String(id));
     const oldNid = existing ? String(existing.national_id || '').trim() : '';
     const newNid = String(updatedItem.national_id || '').trim();
+    const remoteId = existing?._id || existing?.id || id;
 
-    setPlatformCoordinators(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
-    platformCoordinatorsAPI.update(id, updatedItem).catch(err => console.error(err));
+    setPlatformCoordinators(prev => {
+      const next = prev.map(m => (String(m.id) === String(id) || (m._id && String(m._id) === String(id))) ? { ...m, ...updatedItem } : m);
+      saveToLocalStorage('platformCoordinators', next);
+      return next;
+    });
+    platformCoordinatorsAPI.update(remoteId, updatedItem).catch(err => console.error(err));
 
     if (oldNid && newNid && oldNid !== newNid) {
       syncNationalIdChange(oldNid, newNid, 'entity');
@@ -2297,16 +2488,25 @@ export function AppDataProvider({ children }) {
 
   const addPlatformMohfez = (item) => {
     const newItem = { ...item, id: item.id || String(Date.now() + Math.random()) };
-    setPlatformMohfezs(prev => [...prev, newItem]);
+    setPlatformMohfezs(prev => {
+      const next = [...prev, newItem];
+      saveToLocalStorage('platformMohfezs', next);
+      return next;
+    });
     platformMohfezsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformMohfez = (id, updatedItem) => {
     const existing = platformMohfezs.find(m => String(m.id) === String(id) || String(m._id) === String(id));
     const oldNid = existing ? String(existing.national_id || '').trim() : '';
     const newNid = String(updatedItem.national_id || '').trim();
+    const remoteId = existing?._id || existing?.id || id;
 
-    setPlatformMohfezs(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
-    platformMohfezsAPI.update(id, updatedItem).catch(err => console.error(err));
+    setPlatformMohfezs(prev => {
+      const next = prev.map(m => (String(m.id) === String(id) || (m._id && String(m._id) === String(id))) ? { ...m, ...updatedItem } : m);
+      saveToLocalStorage('platformMohfezs', next);
+      return next;
+    });
+    platformMohfezsAPI.update(remoteId, updatedItem).catch(err => console.error(err));
 
     if (oldNid && newNid && oldNid !== newNid) {
       syncNationalIdChange(oldNid, newNid, 'entity');
@@ -2338,17 +2538,26 @@ export function AppDataProvider({ children }) {
   };
 
   const addPlatformStudent = (item) => {
-    const newItem = { ...item, id: String(Date.now()) };
-    setPlatformStudents(prev => [newItem, ...prev]);
+    const newItem = { ...item, id: item.id || String(Date.now() + Math.random()) };
+    setPlatformStudents(prev => {
+      const next = [newItem, ...prev];
+      saveToLocalStorage('platformStudents', next);
+      return next;
+    });
     platformStudentsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformStudent = (id, updatedItem) => {
     const existing = platformStudents.find(m => String(m.id) === String(id) || String(m._id) === String(id));
     const oldNid = existing ? String(existing.national_id || existing.passport_no || '').trim() : '';
     const newNid = String(updatedItem.national_id || updatedItem.passport_no || '').trim();
+    const remoteId = existing?._id || existing?.id || id;
 
-    setPlatformStudents(prev => prev.map(m => (String(m.id) === String(id) || String(m._id) === String(id)) ? { ...m, ...updatedItem } : m));
-    platformStudentsAPI.update(id, updatedItem).catch(err => console.error(err));
+    setPlatformStudents(prev => {
+      const next = prev.map(m => (String(m.id) === String(id) || (m._id && String(m._id) === String(id))) ? { ...m, ...updatedItem } : m);
+      saveToLocalStorage('platformStudents', next);
+      return next;
+    });
+    platformStudentsAPI.update(remoteId, updatedItem).catch(err => console.error(err));
 
     if (oldNid && newNid && oldNid !== newNid) {
       syncNationalIdChange(oldNid, newNid, 'entity');
