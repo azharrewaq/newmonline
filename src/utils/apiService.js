@@ -257,6 +257,7 @@ export const platformApplicantsAPI = {
         apiCall('/platformapplicants?batch=3'),
         apiCall('/platformapplicants?batch=4'),
         apiCall('/platformapplicants?batch=5'),
+        apiCall('/platformapplicants?batch=6'),
       ]);
       const combined = batches.filter(Array.isArray).flat();
       if (combined.length > 0) {

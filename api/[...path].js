@@ -128,8 +128,14 @@ export default async function handler(req, res) {
     // Parse path directly from req.url for reliability across all Vercel versions
     // req.url example: /api/users  or  /api/users/123  or  /api/users/bulk-import
     const rawPath = req.url.split('?')[0]; // Remove query string
-    const urlObj = new URL(req.url, 'http://localhost');
-    const batchParam = urlObj.searchParams.get('batch');
+    const queryObj = req.query || {};
+    let batchParam = queryObj.batch;
+    if (!batchParam) {
+      try {
+        const u = new URL(req.url, 'http://localhost');
+        batchParam = u.searchParams.get('batch');
+      } catch {}
+    }
     const segments = rawPath.split('/').filter(Boolean);
     // segments: ['api', 'users'] or ['api', 'users', '123'] or ['api', 'users', 'bulk-import']
     // segments[0] = 'api', segments[1] = collection, segments[2] = id or special
@@ -435,13 +441,13 @@ export default async function handler(req, res) {
 
     // ── GET /api/:collection ───────────────────────────────────────────────────
     if (req.method === 'GET' && !segment2) {
-      let queryCursor = col.find({});
-      if (batchParam) {
-        const bNum = Number(batchParam);
-        const batchSize = 1250;
-        if (!isNaN(bNum) && bNum >= 1) {
-          queryCursor = queryCursor.skip((bNum - 1) * batchSize).limit(batchSize);
-        }
+      let queryCursor = col.find({}).sort({ _id: 1 });
+      const bNum = Number(batchParam);
+      const batchSize = 1000;
+      if (!isNaN(bNum) && bNum >= 1) {
+        queryCursor = queryCursor.skip((bNum - 1) * batchSize).limit(batchSize);
+      } else if (String(collectionName).toLowerCase() === 'platformapplicants') {
+        queryCursor = queryCursor.limit(1000);
       }
       const docs = await queryCursor.toArray();
 
