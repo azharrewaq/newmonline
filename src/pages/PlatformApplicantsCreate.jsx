@@ -171,7 +171,13 @@ function PlatformApplicantsCreate() {
       register_date: form.register_date || new Date().toLocaleDateString('ar-EG'),
     };
 
-    const existingUser = users.find(u => String(u.national_id || u.email || '').trim() === nid);
+    const originalApplicant = isEditing && applicantId ? platformApplicants.find(a => String(a.id) === String(applicantId) || String(a._id) === String(applicantId)) : null;
+    const oldNid = originalApplicant ? String(originalApplicant.national_id || originalApplicant.passport_no || '').trim() : '';
+
+    const existingUser = users.find(u => {
+      const uNid = String(u.national_id || u.username || u.email || '').trim();
+      return (oldNid && uNid === oldNid) || (nid && uNid === nid);
+    });
 
     if (isEditing) {
       updatePlatformApplicant(applicantId, finalForm);

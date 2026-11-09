@@ -74,7 +74,13 @@ function PlatformMohfezsCreate() {
       password: form.registry_no || form.national_id
     };
     
-    const existingUser = users.find(u => u.national_id === form.national_id || u.email === form.national_id);
+    const originalMohfez = isEditing && mohfezId ? platformMohfezs.find(m => String(m.id) === String(mohfezId) || String(m._id) === String(mohfezId)) : null;
+    const oldNid = originalMohfez ? String(originalMohfez.national_id || '').trim() : '';
+    const newNid = String(form.national_id || '').trim();
+    const existingUser = users.find(u => {
+      const uNid = String(u.national_id || u.username || u.email || '').trim();
+      return (oldNid && uNid === oldNid) || (newNid && uNid === newNid);
+    });
 
     if (isEditing) {
       updatePlatformMohfez(mohfezId, finalForm);

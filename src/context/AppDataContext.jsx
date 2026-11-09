@@ -1396,6 +1396,9 @@ export function AppDataProvider({ children }) {
   const updateCoordinator = (id, updatedCoordinator) => {
     let resolvedIsArchived = undefined;
     const current = coordinators.find(c => String(c.id) === String(id));
+    const oldNid = current ? String(current.national_id || '').trim() : '';
+    const newNid = String(updatedCoordinator.national_id || '').trim();
+
     if (current) {
       resolvedIsArchived = updatedCoordinator.isArchived !== undefined ? updatedCoordinator.isArchived : current.isArchived;
       if (updatedCoordinator.admin !== undefined || updatedCoordinator.center !== undefined || updatedCoordinator.branch !== undefined) {
@@ -1417,6 +1420,10 @@ export function AppDataProvider({ children }) {
       : updatedCoordinator;
     setCoordinators(prev => prev.map(c => String(c.id) === String(id) ? { ...c, ...payload } : c));
     coordinatorsAPI.update(id, payload).catch(err => console.error(err));
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deleteCoordinator = (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -1435,6 +1442,9 @@ export function AppDataProvider({ children }) {
   const updateMohfez = (id, updatedMohfez) => {
     let resolvedIsArchived = undefined;
     const current = mohfezs.find(m => String(m.id) === String(id));
+    const oldNid = current ? String(current.national_id || '').trim() : '';
+    const newNid = String(updatedMohfez.national_id || '').trim();
+
     if (current) {
       resolvedIsArchived = updatedMohfez.isArchived !== undefined ? updatedMohfez.isArchived : current.isArchived;
       if (updatedMohfez.admin !== undefined || updatedMohfez.center !== undefined || updatedMohfez.branch !== undefined) {
@@ -1456,6 +1466,10 @@ export function AppDataProvider({ children }) {
       : updatedMohfez;
     setMohfezs(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...payload } : m));
     mohfezsAPI.update(id, payload).catch(err => console.error(err));
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deleteMohfez = (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -1511,6 +1525,9 @@ export function AppDataProvider({ children }) {
   const updateStudent = (id, updatedStudent) => {
     let resolvedIsArchived = undefined;
     const current = students.find(s => String(s.id) === String(id));
+    const oldNid = current ? String(current.national_id || '').trim() : '';
+    const newNid = String(updatedStudent.national_id || '').trim();
+
     if (current) {
       resolvedIsArchived = updatedStudent.isArchived !== undefined ? updatedStudent.isArchived : current.isArchived;
       if (updatedStudent.admin !== undefined || updatedStudent.center !== undefined || updatedStudent.branch !== undefined) {
@@ -1532,6 +1549,10 @@ export function AppDataProvider({ children }) {
       : updatedStudent;
     setStudents(prev => prev.map(s => String(s.id) === String(id) ? { ...s, ...payload } : s));
     studentsAPI.update(id, payload).catch(err => console.error(err));
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deleteStudent = (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -1643,6 +1664,175 @@ export function AppDataProvider({ children }) {
     });
   };
 
+  // مزامنة تعديل الرقم القومي بين المستخدمين users ومختلف جهات المنصة في الاتجاهين
+  const syncNationalIdChange = (oldNidRaw, newNidRaw, source = 'entity') => {
+    const oldNid = String(oldNidRaw || '').trim();
+    const newNid = String(newNidRaw || '').trim();
+    if (!oldNid || !newNid || oldNid === newNid) return;
+
+    if (source === 'entity') {
+      // 1. التعديل تم من جهة المنصة (دارس، متقدم، محفظ، منسق، مشرف) -> حدِّث جدول المستخدمين
+      setUsers(prev => {
+        let matched = false;
+        const next = prev.map(u => {
+          const uNid = String(u.national_id || '').trim();
+          const uUser = String(u.username || '').trim();
+          const uEmail = String(u.email || '').trim();
+          if (uNid === oldNid || uUser === oldNid || uEmail === oldNid) {
+            matched = true;
+            const updatedU = {
+              ...u,
+              national_id: newNid,
+              username: (uUser === oldNid || !uUser) ? newNid : uUser,
+              email: (uEmail === oldNid || !uEmail) ? newNid : uEmail,
+              password: (String(u.password || '').trim() === oldNid || !u.password) ? newNid : u.password,
+              record_number: (String(u.record_number || '').trim() === oldNid || !u.record_number) ? newNid : u.record_number,
+            };
+            const targetId = u.id || u._id || oldNid;
+            usersAPI.update(targetId, updatedU).catch(err => console.error('Failed to sync user national_id:', err));
+            return updatedU;
+          }
+          return u;
+        });
+        if (matched) {
+          saveToLocalStorage('users', next);
+        }
+        return next;
+      });
+    } else if (source === 'user') {
+      // 2. التعديل تم من جدول المستخدمين -> حدِّث جميع سجلات المنصة المتطابقة مع الرقم القومي القديم
+      // أ) دارسو المنصة platformStudents
+      setPlatformStudents(prev => {
+        let modified = false;
+        const next = prev.map(s => {
+          const sNid = String(s.national_id || s.passport_no || '').trim();
+          if (sNid === oldNid) {
+            modified = true;
+            const updatedS = { ...s, national_id: newNid, passport_no: newNid };
+            platformStudentsAPI.update(s.id || s._id, updatedS).catch(err => console.error('Failed to sync platformStudent nid:', err));
+            return updatedS;
+          }
+          return s;
+        });
+        if (modified) saveToLocalStorage('platformStudents', next);
+        return next;
+      });
+
+      // ب) المتقدمون الجدد platformApplicants
+      setPlatformApplicants(prev => {
+        let modified = false;
+        const next = prev.map(a => {
+          const aNid = String(a.national_id || a.passport_no || '').trim();
+          if (aNid === oldNid) {
+            modified = true;
+            const updatedA = { ...a, national_id: newNid, passport_no: newNid };
+            platformApplicantsAPI.update(a._id || a.id, updatedA).catch(err => console.error('Failed to sync applicant nid:', err));
+            return updatedA;
+          }
+          return a;
+        });
+        if (modified) saveToLocalStorage('platformApplicants', next);
+        return next;
+      });
+
+      // ج) محفظو المنصة platformMohfezs
+      setPlatformMohfezs(prev => {
+        let modified = false;
+        const next = prev.map(m => {
+          if (String(m.national_id || '').trim() === oldNid) {
+            modified = true;
+            const updatedM = { ...m, national_id: newNid };
+            platformMohfezsAPI.update(m.id || m._id, updatedM).catch(err => console.error(err));
+            return updatedM;
+          }
+          return m;
+        });
+        if (modified) saveToLocalStorage('platformMohfezs', next);
+        return next;
+      });
+
+      // د) منسقو المنصة platformCoordinators
+      setPlatformCoordinators(prev => {
+        let modified = false;
+        const next = prev.map(c => {
+          if (String(c.national_id || '').trim() === oldNid) {
+            modified = true;
+            const updatedC = { ...c, national_id: newNid };
+            platformCoordinatorsAPI.update(c.id || c._id, updatedC).catch(err => console.error(err));
+            return updatedC;
+          }
+          return c;
+        });
+        if (modified) saveToLocalStorage('platformCoordinators', next);
+        return next;
+      });
+
+      // هـ) مشرفو المنصة platformSupervisors
+      setPlatformSupervisors(prev => {
+        let modified = false;
+        const next = prev.map(s => {
+          if (String(s.national_id || '').trim() === oldNid) {
+            modified = true;
+            const updatedS = { ...s, national_id: newNid };
+            platformSupervisorsAPI.update(s.id || s._id, updatedS).catch(err => console.error(err));
+            return updatedS;
+          }
+          return s;
+        });
+        if (modified) saveToLocalStorage('platformSupervisors', next);
+        return next;
+      });
+
+      // و) الدارسون students
+      setStudents(prev => {
+        let modified = false;
+        const next = prev.map(s => {
+          if (String(s.national_id || '').trim() === oldNid) {
+            modified = true;
+            const updatedS = { ...s, national_id: newNid };
+            studentsAPI.update(s.id || s._id, updatedS).catch(err => console.error(err));
+            return updatedS;
+          }
+          return s;
+        });
+        if (modified) saveToLocalStorage('students', next);
+        return next;
+      });
+
+      // ز) المحفظون mohfezs
+      setMohfezs(prev => {
+        let modified = false;
+        const next = prev.map(m => {
+          if (String(m.national_id || '').trim() === oldNid) {
+            modified = true;
+            const updatedM = { ...m, national_id: newNid };
+            mohfezsAPI.update(m.id || m._id, updatedM).catch(err => console.error(err));
+            return updatedM;
+          }
+          return m;
+        });
+        if (modified) saveToLocalStorage('mohfezs', next);
+        return next;
+      });
+
+      // ح) المنسقون coordinators
+      setCoordinators(prev => {
+        let modified = false;
+        const next = prev.map(c => {
+          if (String(c.national_id || '').trim() === oldNid) {
+            modified = true;
+            const updatedC = { ...c, national_id: newNid };
+            coordinatorsAPI.update(c.id || c._id, updatedC).catch(err => console.error(err));
+            return updatedC;
+          }
+          return c;
+        });
+        if (modified) saveToLocalStorage('coordinators', next);
+        return next;
+      });
+    }
+  };
+
   const normalizeUserFields = (user) => {
     const isAdminRole = user.role === 'admin';
     if (isAdminRole) {
@@ -1687,6 +1877,10 @@ export function AppDataProvider({ children }) {
   };
 
   const updateUser = (id, updatedUser) => {
+    const existingUser = users.find(u => String(u.id) === String(id) || String(u._id) === String(id));
+    const oldNid = existingUser ? String(existingUser.national_id || existingUser.username || existingUser.email || '').trim() : '';
+    const newNid = String(updatedUser.national_id || updatedUser.username || '').trim();
+
     const mergeAndNormalize = (u) => {
       const merged = { ...u, ...updatedUser };
       const isAdminRole = merged.role === 'admin';
@@ -1746,6 +1940,10 @@ export function AppDataProvider({ children }) {
         // للمستخدمين العاديين: استخدم الـ id المحلي
         usersAPI.update(id, payload).catch(err => console.error(err));
       }
+    }
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'user');
     }
   };
 
@@ -2024,8 +2222,16 @@ export function AppDataProvider({ children }) {
     platformTopManagementAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformTopManagement = (id, updatedItem) => {
+    const existing = platformTopManagement.find(m => String(m.id) === String(id) || String(m._id) === String(id));
+    const oldNid = existing ? String(existing.national_id || '').trim() : '';
+    const newNid = String(updatedItem.national_id || '').trim();
+
     setPlatformTopManagement(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
     platformTopManagementAPI.update(id, updatedItem).catch(err => console.error(err));
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deletePlatformTopManagement = (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -2042,8 +2248,16 @@ export function AppDataProvider({ children }) {
     platformSupervisorsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformSupervisor = (id, updatedItem) => {
+    const existing = platformSupervisors.find(m => String(m.id) === String(id) || String(m._id) === String(id));
+    const oldNid = existing ? String(existing.national_id || '').trim() : '';
+    const newNid = String(updatedItem.national_id || '').trim();
+
     setPlatformSupervisors(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
     platformSupervisorsAPI.update(id, updatedItem).catch(err => console.error(err));
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deletePlatformSupervisor = (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -2060,8 +2274,16 @@ export function AppDataProvider({ children }) {
     platformCoordinatorsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformCoordinator = (id, updatedItem) => {
+    const existing = platformCoordinators.find(m => String(m.id) === String(id) || String(m._id) === String(id));
+    const oldNid = existing ? String(existing.national_id || '').trim() : '';
+    const newNid = String(updatedItem.national_id || '').trim();
+
     setPlatformCoordinators(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
     platformCoordinatorsAPI.update(id, updatedItem).catch(err => console.error(err));
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deletePlatformCoordinator = (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -2078,8 +2300,16 @@ export function AppDataProvider({ children }) {
     platformMohfezsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformMohfez = (id, updatedItem) => {
+    const existing = platformMohfezs.find(m => String(m.id) === String(id) || String(m._id) === String(id));
+    const oldNid = existing ? String(existing.national_id || '').trim() : '';
+    const newNid = String(updatedItem.national_id || '').trim();
+
     setPlatformMohfezs(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
     platformMohfezsAPI.update(id, updatedItem).catch(err => console.error(err));
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deletePlatformMohfez = (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -2112,8 +2342,16 @@ export function AppDataProvider({ children }) {
     platformStudentsAPI.create(newItem).catch(err => console.error(err));
   };
   const updatePlatformStudent = (id, updatedItem) => {
-    setPlatformStudents(prev => prev.map(m => String(m.id) === String(id) ? { ...m, ...updatedItem } : m));
+    const existing = platformStudents.find(m => String(m.id) === String(id) || String(m._id) === String(id));
+    const oldNid = existing ? String(existing.national_id || existing.passport_no || '').trim() : '';
+    const newNid = String(updatedItem.national_id || updatedItem.passport_no || '').trim();
+
+    setPlatformStudents(prev => prev.map(m => (String(m.id) === String(id) || String(m._id) === String(id)) ? { ...m, ...updatedItem } : m));
     platformStudentsAPI.update(id, updatedItem).catch(err => console.error(err));
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deletePlatformStudent = (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -2208,6 +2446,9 @@ export function AppDataProvider({ children }) {
     }
     const target = platformApplicants.find(m => String(m.id) === String(id) || String(m._id) === String(id));
     const remoteId = target?._id || id;
+    const oldNid = target ? String(target.national_id || target.passport_no || '').trim() : '';
+    const newNid = String(sanitizedItem.national_id || sanitizedItem.passport_no || '').trim();
+
     setPlatformApplicants(prev => {
       const next = prev.map(m => (String(m.id) === String(id) || String(m._id) === String(id)) ? { ...m, ...sanitizedItem } : m);
       saveToLocalStorage('platformApplicants', next);
@@ -2219,6 +2460,10 @@ export function AppDataProvider({ children }) {
       .finally(() => {
         pendingApplicantOpsRef.current = Math.max(0, pendingApplicantOpsRef.current - 1);
       });
+
+    if (oldNid && newNid && oldNid !== newNid) {
+      syncNationalIdChange(oldNid, newNid, 'entity');
+    }
   };
   const deletePlatformApplicant = async (id) => {
     if (window.confirm('هل أنت متأكد من عملية الحذف؟')) {
@@ -2764,7 +3009,7 @@ export function AppDataProvider({ children }) {
       applicants, addApplicant, updateApplicant, deleteApplicant, deleteAllApplicants,
       administrations, addCenterToAdmin,
       rowaqs, addRowaq, updateRowaq, deleteRowaq,
-      users, deleteUser, addUser, updateUser,
+      users, deleteUser, addUser, updateUser, syncNationalIdChange,
       applicantBranches, addApplicantBranch, updateApplicantBranch, deleteApplicantBranch,
       auditLogs,
       attendances, addAttendance, deleteAttendance,

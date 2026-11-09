@@ -120,7 +120,14 @@ function PlatformStudentsCreate() {
       gender: selectedSession?.student_type || '',
     };
 
-    const existingUser = users.find(u => u.national_id === form.passport_no || u.email === form.passport_no);
+    const originalStudent = isEditing && studentId ? platformStudents.find(s => String(s.id) === String(studentId)) : null;
+    const oldNid = originalStudent ? String(originalStudent.passport_no || originalStudent.national_id || '').trim() : '';
+    const newNid = String(form.passport_no || '').trim();
+
+    const existingUser = users.find(u => {
+      const uNid = String(u.national_id || u.username || u.email || '').trim();
+      return (oldNid && uNid === oldNid) || (newNid && uNid === newNid);
+    });
 
     if (isEditing) {
       updatePlatformStudent(studentId, studentData);

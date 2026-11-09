@@ -394,6 +394,59 @@ export default async function handler(req, res) {
           { _id: existingDoc._id },
           { $set: safeUpdate }
         );
+
+        // ── مزامنة تعديل الرقم القومي بين المستخدمين والمنصة في الاتجاهين ──
+        try {
+          const colLower = String(collectionName || '').toLowerCase();
+          const normOldNid = String(existingDoc.national_id || existingDoc.passport_no || (colLower === 'users' ? existingDoc.username : '') || '').trim();
+          const normNewNid = String(safeUpdate.national_id || safeUpdate.passport_no || (colLower === 'users' ? (safeUpdate.national_id || safeUpdate.username) : '') || '').trim();
+
+          if (normOldNid && normNewNid && normOldNid !== normNewNid) {
+            if (colLower === 'users') {
+              // تعديل المستخدم في users -> مزامنة الرقم القومي الجديد في كل وثائق المنصة
+              const platformCols = [
+                'platformstudents',
+                'platformapplicants',
+                'platformmohfezs',
+                'platformcoordinators',
+                'platformsupervisors',
+                'students',
+                'mohfezs',
+                'coordinators'
+              ];
+              for (const pCol of platformCols) {
+                await db.collection(pCol).updateMany(
+                  { $or: [{ national_id: normOldNid }, { passport_no: normOldNid }] },
+                  { $set: { national_id: normNewNid, passport_no: normNewNid } }
+                );
+              }
+            } else {
+              // تعديل دارس أو كادر في جداول المنصة -> مزامنة وثيقة المستخدم في users
+              const usersCol = db.collection('users');
+              const matchedUsers = await usersCol.find({
+                $or: [{ national_id: normOldNid }, { username: normOldNid }, { email: normOldNid }]
+              }).toArray();
+
+              for (const u of matchedUsers) {
+                const uSet = {
+                  national_id: normNewNid,
+                  username: (String(u.username || '').trim() === normOldNid || !u.username) ? normNewNid : u.username,
+                  email: (String(u.email || '').trim() === normOldNid || !u.email) ? normNewNid : u.email,
+                };
+                if (String(u.password || '').trim() === normOldNid || !u.password) {
+                  uSet.password = normNewNid;
+                }
+                if (String(u.record_number || '').trim() === normOldNid || !u.record_number) {
+                  uSet.record_number = normNewNid;
+                }
+                await usersCol.updateOne({ _id: u._id }, { $set: uSet });
+              }
+            }
+          }
+        } catch (syncErr) {
+          console.error('Error syncing national_id across collections:', syncErr);
+        }
+
         return res.status(200).json({
           message: 'Updated',
           modifiedCount: result.modifiedCount,

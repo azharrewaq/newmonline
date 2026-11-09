@@ -66,7 +66,13 @@ function PlatformSupervisorsCreate() {
       password: form.registry_no || form.national_id
     };
     
-    const existingUser = users.find(u => u.national_id === form.national_id || u.email === form.national_id);
+    const originalSup = isEditing && itemId ? platformSupervisors.find(s => String(s.id) === String(itemId) || String(s._id) === String(itemId)) : null;
+    const oldNid = originalSup ? String(originalSup.national_id || '').trim() : '';
+    const newNid = String(form.national_id || '').trim();
+    const existingUser = users.find(u => {
+      const uNid = String(u.national_id || u.username || u.email || '').trim();
+      return (oldNid && uNid === oldNid) || (newNid && uNid === newNid);
+    });
 
     if (isEditing) {
       updatePlatformSupervisor(itemId, finalForm);
