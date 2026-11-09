@@ -469,6 +469,7 @@ export function exportExamSheetsToXLSX(
       'السورة المتوقف عندها',
       'الأيام المناسبة',
       'الساعة المناسبة',
+      'وقت الاختبار',
     ];
 
     sheets.forEach((sheet, idx) => {
@@ -533,7 +534,8 @@ export function exportExamSheetsToXLSX(
           isBefore ? '' : (a.tested_level || ''),
           isBefore ? '' : (a.stopped_surah || ''),
           a.preferred_days || '',
-          a.exam_time ? formatTime12Ar(a.exam_time) : (a.preferred_time || ''),
+          a.preferred_time || '',
+          a.exam_time ? formatTime12Ar(a.exam_time) : '',
         ]);
       }
 

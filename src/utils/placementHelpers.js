@@ -670,7 +670,8 @@ export const printPlacementExamSheets = (sheets = []) => {
           <td class="col-level">${escapeHtml(testedLevel)}</td>
           <td class="col-surah">${escapeHtml(stoppedSurah)}</td>
           <td class="col-days">${escapeHtml(prefDays)}</td>
-          <td class="col-time">${escapeHtml(a.exam_time ? formatTime12Ar(a.exam_time) : prefTime)}</td>
+          <td class="col-pref-time">${escapeHtml(prefTime)}</td>
+          <td class="col-exam-time">${escapeHtml(a.exam_time ? formatTime12Ar(a.exam_time) : '')}</td>
         </tr>
       `;
     }
@@ -713,20 +714,21 @@ export const printPlacementExamSheets = (sheets = []) => {
         <table class="exam-table">
           <thead>
             <tr>
-              <th style="width: 28px;">م</th>
-              <th style="width: 14%;">الاسم</th>
-              <th style="width: 10%;">الرقم القومى</th>
-              <th style="width: 5%;">درجة السؤال الأول</th>
-              <th style="width: 5%;">درجة السؤال الثانى</th>
-              <th style="width: 5%;">درجة السؤال الثالث</th>
-              <th style="width: 5%;">درجة السؤال الرابع</th>
-              <th style="width: 5%;">درجة السؤال الخامس</th>
-              <th style="width: 5%;">المجموع</th>
-              <th style="width: 12%;">الرواق</th>
-              <th style="width: 12%;">المستوى وفق الاختبار</th>
+              <th style="width: 24px;">م</th>
+              <th style="width: 13%;">الاسم</th>
+              <th style="width: 9%;">الرقم القومى</th>
+              <th style="width: 4.5%;">درجة السؤال الأول</th>
+              <th style="width: 4.5%;">درجة السؤال الثانى</th>
+              <th style="width: 4.5%;">درجة السؤال الثالث</th>
+              <th style="width: 4.5%;">درجة السؤال الرابع</th>
+              <th style="width: 4.5%;">درجة السؤال الخامس</th>
+              <th style="width: 4.5%;">المجموع</th>
+              <th style="width: 11%;">الرواق</th>
+              <th style="width: 11%;">المستوى وفق الاختبار</th>
               <th style="width: 9%;">السورة المتوقف عندها</th>
-              <th style="width: 8%;">الأيام المناسبة</th>
-              <th style="width: 8%;">الساعة المناسبة</th>
+              <th style="width: 6.5%;">الأيام المناسبة</th>
+              <th style="width: 6.5%;">الساعة المناسبة</th>
+              <th style="width: 7.5%;">وقت الاختبار</th>
             </tr>
           </thead>
           <tbody>
