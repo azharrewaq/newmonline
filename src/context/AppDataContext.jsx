@@ -1031,8 +1031,8 @@ export function AppDataProvider({ children }) {
           username: nid || em || uname,
           email: em || nid,
           national_id: nid || em || uname,
-          password: pw || rec || reg,
-          record_number: rec || pw || reg,
+          password: pw || rec || reg || nid || em || uname,
+          record_number: rec || pw || reg || nid || em || uname,
         };
       });
 
@@ -1052,8 +1052,8 @@ export function AppDataProvider({ children }) {
             email: nid,
             username: nid,
             national_id: nid,
-            password: regNo,
-            record_number: regNo,
+            password: regNo || c.password || nid,
+            record_number: regNo || c.password || nid,
             phone: c.phone || '',
             role: role,
             userAdmin: c.admin || '',
@@ -1077,8 +1077,8 @@ export function AppDataProvider({ children }) {
             email: nid,
             username: nid,
             national_id: nid,
-            password: regNo,
-            record_number: regNo,
+            password: regNo || m.password || nid,
+            record_number: regNo || m.password || nid,
             phone: m.phone || '',
             role: 'mohfez',
             userAdmin: m.admin || '',
@@ -1105,8 +1105,8 @@ export function AppDataProvider({ children }) {
             email: nid,
             username: nid,
             national_id: nid,
-            password: recNo,
-            record_number: recNo,
+            password: recNo || mg.password || nid,
+            record_number: recNo || mg.password || nid,
             phone: mg.phone || '',
             role: role,
             userAdmin: mg.admin || '',
@@ -1125,7 +1125,9 @@ export function AppDataProvider({ children }) {
           normalized.push({
             id: Date.now() + Math.random(),
             name: c.name || '', email: nid, username: nid, national_id: nid,
-            password: regNo, record_number: regNo, phone: c.phone || '',
+            password: regNo || c.password || nid,
+            record_number: regNo || c.password || nid,
+            phone: c.phone || '',
             role: 'platform_coordinator',
             created_at: new Date().toLocaleDateString('ar-EG')
           });
@@ -1142,7 +1144,9 @@ export function AppDataProvider({ children }) {
           normalized.push({
             id: Date.now() + Math.random(),
             name: s.name || '', email: nid, username: nid, national_id: nid,
-            password: regNo, record_number: regNo, phone: s.phone || '',
+            password: regNo || s.password || nid,
+            record_number: regNo || s.password || nid,
+            phone: s.phone || '',
             role: 'platform_supervisor',
             created_at: new Date().toLocaleDateString('ar-EG')
           });
@@ -1159,7 +1163,9 @@ export function AppDataProvider({ children }) {
           normalized.push({
             id: Date.now() + Math.random(),
             name: m.name || '', email: nid, username: nid, national_id: nid,
-            password: regNo, record_number: regNo, phone: m.phone || '',
+            password: regNo || m.password || nid,
+            record_number: regNo || m.password || nid,
+            phone: m.phone || '',
             role: 'platform_mohfez',
             created_at: new Date().toLocaleDateString('ar-EG')
           });
@@ -1176,7 +1182,9 @@ export function AppDataProvider({ children }) {
           normalized.push({
             id: Date.now() + Math.random(),
             name: t.name || '', email: nid, username: nid, national_id: nid,
-            password: regNo, record_number: regNo, phone: t.phone || '',
+            password: regNo || t.password || nid,
+            record_number: regNo || t.password || nid,
+            phone: t.phone || '',
             role: 'platform_admin',
             created_at: new Date().toLocaleDateString('ar-EG')
           });

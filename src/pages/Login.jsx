@@ -53,6 +53,23 @@ function Login() {
       .trim();
   };
 
+  const normalizeArabic = (str) => {
+    if (!str) return '';
+    return str
+      .toString()
+      .trim()
+      .normalize('NFKD')
+      .normalize('NFC')
+      .replace(/[\u064B-\u065F\u0670]/g, '')
+      .replace(/[أإآا]/g, 'ا')
+      .replace(/[ىي]/g, 'ي')
+      .replace(/[ة]/g, 'ه')
+      .replace(/[ـ]/g, '')
+      .replace(/\s+/g, ' ')
+      .toLowerCase()
+      .trim();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -69,16 +86,26 @@ function Login() {
       return;
     }
 
-    // ===== 1) البحث في قائمة المستخدمين أولاً =====
-    let foundUser = users.find(u => {
-      const ids = [u.national_id, u.email, u.username].map(v => toEnglishDigits(String(v || '').trim()));
-      const rawIds = [u.national_id, u.email, u.username].map(v => String(v || '').trim());
-      const pws = [u.password, u.record_number, u.registry_no].map(v => toEnglishDigits(String(v || '').trim()));
-      const rawPws = [u.password, u.record_number, u.registry_no].map(v => String(v || '').trim());
-      const matchId = ids.some(id => id && (id === inputUser || id === inputUserRaw)) || rawIds.some(id => id && (id === inputUser || id === inputUserRaw));
-      const matchPw = pws.some(pw => pw && (pw === inputPass || pw === inputPassRaw)) || rawPws.some(pw => pw && (pw === inputPass || pw === inputPassRaw));
+    // دالة مساعدة لمطابقة بيانات الموظفين والمنسقين
+    const matchStaffCredentials = (staff) => {
+      if (!staff) return false;
+      const ids = [staff.national_id, staff.username, staff.email, staff.phone].map(v => toEnglishDigits(String(v || '').trim()));
+      const rawIds = [staff.national_id, staff.username, staff.email, staff.phone].map(v => String(v || '').trim());
+      const pws = [staff.password, staff.record_number, staff.record_no, staff.registry_no, staff.national_id, staff.phone].map(v => toEnglishDigits(String(v || '').trim()));
+      const rawPws = [staff.password, staff.record_number, staff.record_no, staff.registry_no, staff.national_id, staff.phone].map(v => String(v || '').trim());
+      
+      const matchId = ids.some(id => id && (id === inputUser || id === inputUserRaw)) || 
+                      rawIds.some(id => id && (id === inputUser || id === inputUserRaw)) ||
+                      (staff.name && normalizeArabic(staff.name) === normalizeArabic(inputUserRaw));
+
+      const matchPw = pws.some(pw => pw && (pw === inputPass || pw === inputPassRaw)) || 
+                      rawPws.some(pw => pw && (pw === inputPass || pw === inputPassRaw));
+
       return matchId && matchPw;
-    });
+    };
+
+    // ===== 1) البحث في قائمة المستخدمين أولاً =====
+    let foundUser = users.find(u => matchStaffCredentials(u));
 
     // تحقق إضافي لدارسي العلوم الشرعية لتحديث دورهم أو التعرف عليهم مباشرة
     try {
@@ -108,30 +135,6 @@ function Login() {
     } catch (err) {
       console.error('Error parsing sharia_students in Login', err);
     }
-
-    const normalizeArabic = (str) => {
-      if (!str) return '';
-      return str
-        .toString()
-        .trim()
-        .normalize('NFKD')
-        .normalize('NFC')
-        .replace(/ً/g, '')
-        .replace(/ٌ/g, '')
-        .replace(/ٍ/g, '')
-        .replace(/َ/g, '')
-        .replace(/ُ/g, '')
-        .replace(/ِ/g, '')
-        .replace(/ّ/g, '')
-        .replace(/ْ/g, '')
-        .replace(/[أإآا]/g, 'ا')
-        .replace(/[ىي]/g, 'ي')
-        .replace(/[ة]/g, 'ه')
-        .replace(/[ـ]/g, '')
-        .replace(/\s+/g, ' ')
-        .toLowerCase()
-        .trim();
-    };
 
     // ===== 2) إذا لم نجده، نبحث في جميع بيانات النظام، وإلا نقوم بتحديث الحقول الجغرافية إذا كان منسقاً أو محفظاً =====
     if (foundUser) {
@@ -196,29 +199,23 @@ function Login() {
       console.log('🔍 لم يُعثر عليه في المستخدمين، جاري البحث في بيانات النظام...');
 
       // البحث في المنسقين (شئون الأروقة)
-      const coord = coordinators.find(c =>
-        String(c.national_id || '').trim() === inputUser &&
-        String(c.registry_no || '').trim() === inputPass
-      );
+      const coord = coordinators.find(c => matchStaffCredentials(c));
       if (coord) {
         const role = coord.specialization === 'إداري' ? 'branch_admin_coordinator' : 'branch_scientific_coordinator';
         foundUser = {
-          name: coord.name, email: inputUser, username: inputUser, national_id: inputUser,
-          password: inputPass, record_number: inputPass, phone: coord.phone || '',
+          name: coord.name, email: coord.national_id || inputUser, username: coord.national_id || inputUser, national_id: coord.national_id || inputUser,
+          password: inputPass, record_number: coord.registry_no || inputPass, phone: coord.phone || '',
           role, userAdmin: coord.admin || '', userCenter: coord.center || '', userBranch: coord.branch || ''
         };
       }
 
       // البحث في المحفظين (شئون الأروقة)
       if (!foundUser) {
-        const moh = mohfezs.find(m =>
-          String(m.national_id || '').trim() === inputUser &&
-          String(m.registry_no || '').trim() === inputPass
-        );
+        const moh = mohfezs.find(m => matchStaffCredentials(m));
         if (moh) {
           foundUser = {
-            name: moh.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: moh.phone || '',
+            name: moh.name, email: moh.national_id || inputUser, username: moh.national_id || inputUser, national_id: moh.national_id || inputUser,
+            password: inputPass, record_number: moh.registry_no || inputPass, phone: moh.phone || '',
             role: 'mohfez', userAdmin: moh.admin || '', userCenter: moh.center || '', userBranch: moh.branch || ''
           };
         }
@@ -226,17 +223,14 @@ function Login() {
 
       // البحث في المدراء/أعضاء الإدارة
       if (!foundUser) {
-        const mgr = managers.find(mg =>
-          String(mg.national_id || '').trim() === inputUser &&
-          String(mg.record_no || '').trim() === inputPass
-        );
+        const mgr = managers.find(mg => matchStaffCredentials(mg));
         if (mgr) {
           let role = 'rowaq_member';
           if (mgr.specialty === 'مدير الإدارة') role = 'rowaq_manager';
           else if (mgr.specialty === 'العضو التقني') role = 'rowaq_tech';
           foundUser = {
-            name: mgr.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: mgr.phone || '',
+            name: mgr.name, email: mgr.national_id || inputUser, username: mgr.national_id || inputUser, national_id: mgr.national_id || inputUser,
+            password: inputPass, record_number: mgr.record_no || inputPass, phone: mgr.phone || '',
             role, userAdmin: mgr.admin || '',
             specialty: mgr.specialty
           };
@@ -245,14 +239,11 @@ function Login() {
 
       // البحث في منسقي المنصة
       if (!foundUser) {
-        const pc = platformCoordinators.find(c =>
-          String(c.national_id || '').trim() === inputUser &&
-          String(c.registry_no || '').trim() === inputPass
-        );
+        const pc = platformCoordinators.find(c => matchStaffCredentials(c));
         if (pc) {
           foundUser = {
-            name: pc.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: pc.phone || '',
+            name: pc.name, email: pc.national_id || inputUser, username: pc.national_id || inputUser, national_id: pc.national_id || inputUser,
+            password: inputPass, record_number: pc.registry_no || inputPass, phone: pc.phone || '',
             role: 'platform_coordinator'
           };
         }
@@ -260,14 +251,11 @@ function Login() {
 
       // البحث في مشرفي المنصة
       if (!foundUser) {
-        const ps = platformSupervisors.find(s =>
-          String(s.national_id || '').trim() === inputUser &&
-          String(s.registry_no || '').trim() === inputPass
-        );
+        const ps = platformSupervisors.find(s => matchStaffCredentials(s));
         if (ps) {
           foundUser = {
-            name: ps.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: ps.phone || '',
+            name: ps.name, email: ps.national_id || inputUser, username: ps.national_id || inputUser, national_id: ps.national_id || inputUser,
+            password: inputPass, record_number: ps.registry_no || inputPass, phone: ps.phone || '',
             role: 'platform_supervisor'
           };
         }
@@ -275,14 +263,11 @@ function Login() {
 
       // البحث في محفظي المنصة
       if (!foundUser) {
-        const pm = platformMohfezs.find(m =>
-          String(m.national_id || '').trim() === inputUser &&
-          String(m.registry_no || '').trim() === inputPass
-        );
+        const pm = platformMohfezs.find(m => matchStaffCredentials(m));
         if (pm) {
           foundUser = {
-            name: pm.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: pm.phone || '',
+            name: pm.name, email: pm.national_id || inputUser, username: pm.national_id || inputUser, national_id: pm.national_id || inputUser,
+            password: inputPass, record_number: pm.registry_no || inputPass, phone: pm.phone || '',
             role: 'platform_mohfez'
           };
         }
@@ -290,14 +275,11 @@ function Login() {
 
       // البحث في الإدارة العليا للمنصة
       if (!foundUser) {
-        const pt = platformTopManagement.find(t =>
-          String(t.national_id || '').trim() === inputUser &&
-          (String(t.registry_no || '').trim() === inputPass || String(t.record_no || '').trim() === inputPass)
-        );
+        const pt = platformTopManagement.find(t => matchStaffCredentials(t));
         if (pt) {
           foundUser = {
-            name: pt.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: pt.phone || '',
+            name: pt.name, email: pt.national_id || inputUser, username: pt.national_id || inputUser, national_id: pt.national_id || inputUser,
+            password: inputPass, record_number: pt.registry_no || pt.record_no || inputPass, phone: pt.phone || '',
             role: 'platform_admin'
           };
         }
@@ -441,29 +423,36 @@ function Login() {
           apiCall(`/mohfezs/${encodeURIComponent(inputUser)}`).catch(() => null),
         ]);
 
-        if (remotePC && String(remotePC.registry_no || '').trim() === inputPass) {
+        const checkRemoteStaffPw = (staff) => {
+          if (!staff) return false;
+          const staffPws = [staff.password, staff.registry_no, staff.record_number, staff.record_no, staff.national_id, staff.phone].map(v => toEnglishDigits(String(v || '').trim()));
+          const staffRawPws = [staff.password, staff.registry_no, staff.record_number, staff.record_no, staff.national_id, staff.phone].map(v => String(v || '').trim());
+          return staffPws.some(pw => pw && (pw === inputPass || pw === inputPassRaw)) || staffRawPws.some(pw => pw && (pw === inputPass || pw === inputPassRaw));
+        };
+
+        if (remotePC && checkRemoteStaffPw(remotePC)) {
           foundUser = {
-            name: remotePC.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: remotePC.phone || '',
+            name: remotePC.name, email: remotePC.national_id || inputUser, username: remotePC.national_id || inputUser, national_id: remotePC.national_id || inputUser,
+            password: inputPass, record_number: remotePC.registry_no || inputPass, phone: remotePC.phone || '',
             role: 'platform_coordinator'
           };
-        } else if (remotePM && String(remotePM.registry_no || '').trim() === inputPass) {
+        } else if (remotePM && checkRemoteStaffPw(remotePM)) {
           foundUser = {
-            name: remotePM.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: remotePM.phone || '',
+            name: remotePM.name, email: remotePM.national_id || inputUser, username: remotePM.national_id || inputUser, national_id: remotePM.national_id || inputUser,
+            password: inputPass, record_number: remotePM.registry_no || inputPass, phone: remotePM.phone || '',
             role: 'platform_mohfez'
           };
-        } else if (remoteCoord && String(remoteCoord.registry_no || '').trim() === inputPass) {
+        } else if (remoteCoord && checkRemoteStaffPw(remoteCoord)) {
           const role = remoteCoord.specialization === 'إداري' ? 'branch_admin_coordinator' : 'branch_scientific_coordinator';
           foundUser = {
-            name: remoteCoord.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: remoteCoord.phone || '',
+            name: remoteCoord.name, email: remoteCoord.national_id || inputUser, username: remoteCoord.national_id || inputUser, national_id: remoteCoord.national_id || inputUser,
+            password: inputPass, record_number: remoteCoord.registry_no || inputPass, phone: remoteCoord.phone || '',
             role, userAdmin: remoteCoord.admin || '', userCenter: remoteCoord.center || '', userBranch: remoteCoord.branch || ''
           };
-        } else if (remoteMoh && String(remoteMoh.registry_no || '').trim() === inputPass) {
+        } else if (remoteMoh && checkRemoteStaffPw(remoteMoh)) {
           foundUser = {
-            name: remoteMoh.name, email: inputUser, username: inputUser, national_id: inputUser,
-            password: inputPass, record_number: inputPass, phone: remoteMoh.phone || '',
+            name: remoteMoh.name, email: remoteMoh.national_id || inputUser, username: remoteMoh.national_id || inputUser, national_id: remoteMoh.national_id || inputUser,
+            password: inputPass, record_number: remoteMoh.registry_no || inputPass, phone: remoteMoh.phone || '',
             role: 'mohfez', userAdmin: remoteMoh.admin || '', userCenter: remoteMoh.center || '', userBranch: remoteMoh.branch || ''
           };
         }
