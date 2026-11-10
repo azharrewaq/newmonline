@@ -11,7 +11,7 @@ function PlatformHeroBanner() {
           <Crown className="crown-icon text-gold" size={24} />
           <div>
             <h4>مرحباً بك في نظام إدارة المنصة</h4>
-            <span className="university-name">الجامع الأزهر الشريف - وفق الله تعالى</span>
+            <span className="university-name">الجامع الأزهر الشريف</span>
           </div>
         </div>
         

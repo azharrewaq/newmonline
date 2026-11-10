@@ -19,10 +19,10 @@ function Footer() {
 
       {/* Bottom Row - Three Positions */}
       <div className="footer-grid">
-        {/* Right Column - مدير شؤون الأروقة / الشؤون الدينية */}
+        {/* Right Column - المشرف العام على الأروقة */}
         <div className="footer-card">
-          <span className="footer-card-title">{managerTitle}</span>
-          <span className="footer-card-name">{managerName}</span>
+          <span className="footer-card-title">المشرف العام على الأروقة</span>
+          <span className="footer-card-name">أ.د / عبدالمنعم فؤاد</span>
         </div>
 
         {/* Center Column - مدير عام الجامع الأزهر */}
@@ -31,10 +31,10 @@ function Footer() {
           <span className="footer-card-name">الدكتور / هاني عودة</span>
         </div>
 
-        {/* Left Column - المشرف العام */}
+        {/* Left Column - مدير شؤون الأروقة / الشؤون الدينية */}
         <div className="footer-card">
-          <span className="footer-card-title">المشرف العام على الأروقة</span>
-          <span className="footer-card-name">أ.د / عبدالمنعم فؤاد</span>
+          <span className="footer-card-title">{managerTitle}</span>
+          <span className="footer-card-name">{managerName}</span>
         </div>
       </div>
     </footer>
