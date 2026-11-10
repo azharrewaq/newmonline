@@ -55,8 +55,11 @@
 }
 
 .university-name {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
+  display: block;
+  text-align: center;
+  width: 100%;
 }
 
 /* Main title */
