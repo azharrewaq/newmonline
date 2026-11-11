@@ -55,8 +55,8 @@ function PlatformApplicantsList() {
 
   const importRef = useRef(null);
   const currentUser = useMemo(() => JSON.parse(sessionStorage.getItem('currentUser') || 'null'), []);
-  const role = currentUser?.role || 'admin';
-  const isAdmin = role === 'admin' || role === 'platform_admin';
+  const role = currentUser?.role || '';
+  const isAdmin = (role === 'admin' || role === 'platform_admin') && !!currentUser;
   const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
   const isSupervisor = role === 'platform_supervisor';
   const isCoordinator = useMemo(() => {
