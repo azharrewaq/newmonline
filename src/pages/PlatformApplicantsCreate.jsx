@@ -42,6 +42,7 @@ function PlatformApplicantsCreate() {
 
   const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
   const role = currentUser?.role || 'admin';
+  const isAdmin = role === 'admin' || role === 'platform_admin';
   const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
   const isAdminOrSupervisor = ['admin', 'platform_admin', 'platform_supervisor'].includes(role);
   const isCoordinator = role === 'platform_coordinator' || role === 'coordinator' ||
@@ -133,6 +134,13 @@ function PlatformApplicantsCreate() {
   };
 
   useEffect(() => {
+    if (!isEditing && !isAdmin) {
+      alert('عفواً، صلاحية إضافة متقدمين جدد مقتصرة على الإدارة فقط.');
+      navigate('/platform-applicants');
+    }
+  }, [isEditing, isAdmin, navigate]);
+
+  useEffect(() => {
     if (isEditing && applicantId) {
       const a = platformApplicants.find(x => String(x.id) === String(applicantId));
       if (a) {
@@ -166,6 +174,11 @@ function PlatformApplicantsCreate() {
   const availableLevels = getLevelsForApplicantRowaq(form.rowaq);
 
   const handleSubmit = () => {
+    if (!isEditing && !isAdmin) {
+      alert('عفواً، صلاحية إضافة متقدمين جدد مقتصرة على الإدارة فقط.');
+      return;
+    }
+
     if (!form.name.trim() || !form.national_id.trim()) {
       alert('الرجاء إدخال الاسم والرقم القومي / جواز السفر');
       return;
@@ -192,6 +205,16 @@ function PlatformApplicantsCreate() {
       username: nid,
       password: nid,
       register_date: form.register_date || new Date().toLocaleDateString('ar-EG'),
+      ...(isEditing ? {
+        updated_by: currentUser?.name || currentUser?.username || 'admin',
+        updated_by_role: role,
+        updated_at: new Date().toISOString(),
+      } : {
+        created_by: currentUser?.name || currentUser?.username || 'admin',
+        created_by_role: role,
+        created_by_id: currentUser?.national_id || currentUser?.username || '',
+        created_at: new Date().toISOString(),
+      }),
     };
 
     const originalApplicant = isEditing && applicantId ? platformApplicants.find(a => String(a.id) === String(applicantId) || String(a._id) === String(applicantId)) : null;

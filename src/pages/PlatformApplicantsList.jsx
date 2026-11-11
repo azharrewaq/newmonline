@@ -56,6 +56,7 @@ function PlatformApplicantsList() {
   const importRef = useRef(null);
   const currentUser = useMemo(() => JSON.parse(sessionStorage.getItem('currentUser') || 'null'), []);
   const role = currentUser?.role || 'admin';
+  const isAdmin = role === 'admin' || role === 'platform_admin';
   const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
   const isSupervisor = role === 'platform_supervisor';
   const isCoordinator = useMemo(() => {
@@ -1490,7 +1491,7 @@ function PlatformApplicantsList() {
 
           <div className="table-controls" style={{ justifyContent: 'space-between', flexDirection: 'row-reverse' }}>
             <div className="action-buttons" style={{ flexDirection: 'row-reverse' }}>
-              {(isAdminOrSupervisor || isCoordinator) && (
+              {isAdmin && (
                 <Link to="/platform-applicants/create" className="btn btn-primary" style={{ textDecoration: 'none' }}>
                   <Plus size={16} /> إضافة متقدم
                 </Link>
