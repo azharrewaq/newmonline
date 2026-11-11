@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Search, Plus, Download, Upload, Trash2, Edit, Video,
   Users, Layers, GitMerge, Clock, Calendar, Printer, RefreshCw,
-  CheckCircle2, AlertCircle, Eye, Copy, Filter, X, Check
+  CheckCircle2, AlertCircle, Eye, Copy, Filter, X, Check, Save
 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
@@ -333,6 +333,30 @@ function PlatformApplicantsList() {
       patch.status = 'تم تحديد المستوى';
     }
     updatePlatformApplicant(applicant.id, patch);
+  };
+
+  const [rowSavedStatus, setRowSavedStatus] = useState({});
+
+  // حفظ يدوي لبيانات سطر المتقدم (تسكين الرواق، المستوى، السورة، المجموعة، إلخ) مع تأكيد مرئي
+  const handleManualRowSave = (applicant) => {
+    if (!applicant) return;
+    const patch = {
+      last_modified_by: currentUser?.name || currentUser?.username || 'مستخدم',
+      last_modified_role: currentUser?.role || '',
+      last_modified_at: new Date().toISOString(),
+    };
+    if (applicant.rowaq && (applicant.tested_level || (applicant.applied_level && applicant.stopped_surah))) {
+      patch.status = 'تم تحديد المستوى';
+    }
+    updatePlatformApplicant(applicant.id, patch);
+    setRowSavedStatus(prev => ({ ...prev, [applicant.id]: true }));
+    setTimeout(() => {
+      setRowSavedStatus(prev => {
+        const next = { ...prev };
+        delete next[applicant.id];
+        return next;
+      });
+    }, 2500);
   };
 
   // فحص صلاحية إدارة مجموعة معينة (الإدارة، المشرف التقني/العلمي للمجموعة، أو منسق المجموعة)
@@ -1735,7 +1759,7 @@ function PlatformApplicantsList() {
                           </div>
                         </td>
 
-                        <td className="actions-cell" style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
+                        <td className="actions-cell" style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
                           {link && (
                             <a
                               href={link}
@@ -1750,6 +1774,36 @@ function PlatformApplicantsList() {
                               <Video size={13} /> تيمز
                             </a>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => handleManualRowSave(a)}
+                            title="حفظ بيانات وتسكين الدارس"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              backgroundColor: rowSavedStatus[a.id] ? '#10b981' : 'rgba(59, 130, 246, 0.15)',
+                              color: rowSavedStatus[a.id] ? '#ffffff' : '#60a5fa',
+                              border: rowSavedStatus[a.id] ? '1px solid #10b981' : '1px solid rgba(59, 130, 246, 0.35)',
+                              padding: '4px 8px',
+                              borderRadius: 4,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {rowSavedStatus[a.id] ? (
+                              <>
+                                <Check size={13} /> تم الحفظ
+                              </>
+                            ) : (
+                              <>
+                                <Save size={13} /> حفظ
+                              </>
+                            )}
+                          </button>
                           {(isAdminOrSupervisor || isCoordinator) && (
                             <Link
                               to={`/platform-applicants/create?id=${a.id}`}
