@@ -206,8 +206,8 @@ function Sidebar({ isOpen, toggleSidebar }) {
       return userRole === 'rowaq_admin';
     }
 
-    // 1. platform_admin / platform_supervisor
-    if (['platform_admin', 'platform_supervisor'].includes(userRole)) {
+    // 1. platform_admin
+    if (userRole === 'platform_admin') {
       const allowed = [
         '/platform-dashboard',
         '/platform-top-management',
@@ -224,6 +224,24 @@ function Sidebar({ isOpen, toggleSidebar }) {
         '/users',
         '/permissions',
         '/settings'
+      ];
+      return allowed.includes(path);
+    }
+
+    // 1.5. platform_supervisor (المشرف: لا يملك صلاحية المستخدمين والصلاحيات والإعدادات أو الإدارة العليا)
+    if (userRole === 'platform_supervisor') {
+      const allowed = [
+        '/platform-dashboard',
+        '/platform-supervisors',
+        '/platform-coordinators',
+        '/platform-mohfez',
+        '/platform-sessions',
+        '/platform-students',
+        '/platform-applicants',
+        '/platform-reports',
+        '/mohfez-hours-report',
+        '/coordinator-workdays-report',
+        '/student-absence-report'
       ];
       return allowed.includes(path);
     }

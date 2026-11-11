@@ -20,6 +20,7 @@ function PlatformSessionsList() {
     rowaqs, 
     hasPermission, 
     deleteAllPlatformSessions,
+    platformSupervisors = [],
     platformCoordinators = [],
     platformMohfezs = [],
     platformStudents = [],
@@ -211,15 +212,16 @@ function PlatformSessionsList() {
     return `${hourFormatted}:${minutes} ${ampm}`;
   };
 
-  // 1. فلترة الحلقات بدقة حسب صلاحية ونطاق المستخدم (منسق، محفظ، دارس)
+  // 1. فلترة الحلقات بدقة حسب صلاحية ونطاق المستخدم (مشرف، منسق، محفظ، دارس)
   const scopedSessions = useMemo(() => {
     return filterSessionsForUser(platformSessions, currentUser, {
+      platformSupervisors,
       platformCoordinators,
       platformMohfezs,
       platformStudents,
       users
     });
-  }, [platformSessions, currentUser, platformCoordinators, platformMohfezs, platformStudents, users, substitutions]);
+  }, [platformSessions, currentUser, platformSupervisors, platformCoordinators, platformMohfezs, platformStudents, users, substitutions]);
 
   // 2. تطبيق فلاتر واجهة المستخدم
   const filtered = scopedSessions.filter(s => {

@@ -151,40 +151,70 @@ function PlatformApplicantsList() {
   const [copiedGroupDisplayNo, setCopiedGroupDisplayNo] = useState(null);
   const compatPageSize = 25;
 
-  // تحديد المجموعات التابعة للمحفظ أو المنسق أو المشرف الحالي
-  const myGroupNumbers = useMemo(() => {
-    const uName = normalizeArabic(currentUser?.name || '');
-    if (isSupervisor && uName) {
-      const supNums = new Set();
-      placementGroups.forEach(g => {
-        if (
-          (g.scientific_supervisor && normalizeArabic(g.scientific_supervisor) === uName) ||
-          (g.technical_supervisor && normalizeArabic(g.technical_supervisor) === uName)
-        ) {
-          supNums.add(Number(g.group_no));
-        }
-      });
-      // إذا كان المشرف مسكناً على مجموعات محددة يرى مجموعاته، وإلا يرى الكل
-      if (supNums.size > 0) return supNums;
+  // تجميع كافة الأسماء البديلة للمستخدم الحالي (الاسم المسجل، والاسم في جدول المشرفين/المنسقين/المحفظين عبر الرقم القومي أو اسم المستخدم)
+  const currentPossibleNames = useMemo(() => {
+    const set = new Set();
+    if (currentUser?.name) {
+      const n = normalizeArabic(currentUser.name);
+      if (n) set.add(n);
     }
-    if (isAdminOrSupervisor) return null; // يرى الجميع
+    const cNid = String(currentUser?.national_id || currentUser?.username || '').trim();
+    if (cNid) {
+      const matchSup = platformSupervisors.find(s => String(s.national_id || s.username || '').trim() === cNid);
+      if (matchSup?.name) {
+        const n = normalizeArabic(matchSup.name);
+        if (n) set.add(n);
+      }
+      const matchCoord = platformCoordinators.find(c => String(c.national_id || c.username || '').trim() === cNid);
+      if (matchCoord?.name) {
+        const n = normalizeArabic(matchCoord.name);
+        if (n) set.add(n);
+      }
+      const matchMohfez = platformMohfezs.find(m => String(m.national_id || m.username || '').trim() === cNid);
+      if (matchMohfez?.name) {
+        const n = normalizeArabic(matchMohfez.name);
+        if (n) set.add(n);
+      }
+    }
+    return Array.from(set);
+  }, [currentUser, platformSupervisors, platformCoordinators, platformMohfezs]);
+
+  const matchesCurrentPerson = (nameField) => {
+    if (!nameField) return false;
+    const norm = normalizeArabic(nameField);
+    for (const p of currentPossibleNames) {
+      if (norm === p || norm.includes(p) || p.includes(norm)) return true;
+    }
+    return false;
+  };
+
+  // تحديد المجموعات التابعة للمحفظ أو المنسق أو المشرف الحالي (المدير العام فقط يرى كل شيء)
+  const myGroupNumbers = useMemo(() => {
+    if (isAdmin) return null; // الإدارة فقط ترى جميع المجموعات
     const nums = new Set();
     placementGroups.forEach(g => {
-      if (isMohfez && (
-        (g.mohfez && normalizeArabic(g.mohfez) === uName) ||
-        (g.scientific_supervisor && normalizeArabic(g.scientific_supervisor) === uName)
+      if (isSupervisor && (
+        matchesCurrentPerson(g.scientific_supervisor) ||
+        matchesCurrentPerson(g.technical_supervisor) ||
+        matchesCurrentPerson(g.supervisor)
       )) {
         nums.add(Number(g.group_no));
       }
       if (isCoordinator && (
-        (g.coordinator && normalizeArabic(g.coordinator) === uName) ||
-        (g.technical_supervisor && normalizeArabic(g.technical_supervisor) === uName)
+        matchesCurrentPerson(g.coordinator) ||
+        matchesCurrentPerson(g.technical_supervisor)
+      )) {
+        nums.add(Number(g.group_no));
+      }
+      if (isMohfez && (
+        matchesCurrentPerson(g.mohfez) ||
+        matchesCurrentPerson(g.scientific_supervisor)
       )) {
         nums.add(Number(g.group_no));
       }
     });
     return nums;
-  }, [isAdminOrSupervisor, isSupervisor, isMohfez, isCoordinator, currentUser, placementGroups]);
+  }, [isAdmin, isSupervisor, isCoordinator, isMohfez, placementGroups, currentPossibleNames]);
 
   // توقيتات الاختبار المسجلة فعلياً (وفق ما تم رفعه أو إضافته)
   const availableExamTimes = useMemo(() => {
@@ -197,26 +227,17 @@ function PlatformApplicantsList() {
     return Array.from(set).sort();
   }, [platformApplicants, placementGroups]);
 
-  // تصفية المتقدمين حسب صلاحية المستخدم (أدمن / مشرف / منسق / محفظ) + الفلاتر
+  // تصفية المتقدمين حسب صلاحية ونطاق المستخدم (أدمن يرى الجميع، مشرف/منسق/محفظ يرى مجموعاته فقط) + الفلاتر
   const filtered = useMemo(() => {
-    const uName = normalizeArabic(currentUser?.name || '');
     return platformApplicants.filter(a => {
       if (myGroupNumbers !== null) {
         const gNo = Number(a.group_no);
-        const byGroup = gNo && myGroupNumbers.has(gNo);
-        const byMohfez = isMohfez && (
-          (a.mohfez && normalizeArabic(a.mohfez) === uName) ||
-          (a.scientific_supervisor && normalizeArabic(a.scientific_supervisor) === uName)
-        );
-        const byCoord = isCoordinator && (
-          (a.coordinator && normalizeArabic(a.coordinator) === uName) ||
-          (a.technical_supervisor && normalizeArabic(a.technical_supervisor) === uName)
-        );
-        const bySup = isSupervisor && (
-          (a.scientific_supervisor && normalizeArabic(a.scientific_supervisor) === uName) ||
-          (a.technical_supervisor && normalizeArabic(a.technical_supervisor) === uName)
-        );
-        if (!byGroup && !byMohfez && !byCoord && !bySup) return false;
+        const inMyGroup = gNo && myGroupNumbers.has(gNo);
+        const directMatch = (isMohfez && (matchesCurrentPerson(a.mohfez) || matchesCurrentPerson(a.scientific_supervisor))) ||
+                            (isCoordinator && (matchesCurrentPerson(a.coordinator) || matchesCurrentPerson(a.technical_supervisor))) ||
+                            (isSupervisor && (matchesCurrentPerson(a.scientific_supervisor) || matchesCurrentPerson(a.technical_supervisor) || matchesCurrentPerson(a.supervisor)));
+
+        if (!inMyGroup && !directMatch) return false;
       }
 
       if (filterName) {
@@ -314,15 +335,15 @@ function PlatformApplicantsList() {
     updatePlatformApplicant(applicant.id, patch);
   };
 
-  // فحص صلاحية إدارة مجموعة معينة (الإدارة، المشرف العام، المشرف التقني للمجموعة، أو منسق المجموعة)
+  // فحص صلاحية إدارة مجموعة معينة (الإدارة، المشرف التقني/العلمي للمجموعة، أو منسق المجموعة)
   const canManageGroup = (group, field = null) => {
     if (!group) return false;
-    if (isAdminOrSupervisor) return true;
-    const uName = normalizeArabic(currentUser?.name || '');
-    if (!uName) return false;
+    if (isAdmin) return true;
+    if (currentPossibleNames.length === 0) return false;
 
-    const isGroupTechSup = group.technical_supervisor && normalizeArabic(group.technical_supervisor) === uName;
-    const isGroupCoord = group.coordinator && normalizeArabic(group.coordinator) === uName;
+    const isGroupTechSup = matchesCurrentPerson(group.technical_supervisor);
+    const isGroupCoord = matchesCurrentPerson(group.coordinator);
+    const isGroupSciSup = matchesCurrentPerson(group.scientific_supervisor);
 
     // المشرف التقني للمجموعة له صلاحية كاملة على مجموعاته الخاصة:
     // تسكين المنسق، رابط تيمز، تسكين المحفظ، تعديل توقيت المجموعة
@@ -332,25 +353,18 @@ function PlatformApplicantsList() {
       }
     }
 
-    // إذا كانت المجموعة ضمن مجموعات المستخدم المصرحة
-    if (myGroupNumbers !== null && myGroupNumbers.has(Number(group.group_no))) {
-      const userIsTechOnThisGroup = placementGroups.some(g =>
-        Number(g.group_no) === Number(group.group_no) &&
-        g.technical_supervisor &&
-        normalizeArabic(g.technical_supervisor) === uName
-      );
-      if (userIsTechOnThisGroup) {
-        if (!field || ['coordinator', 'teams_link', 'mohfez', 'time_start', 'time_end'].includes(field)) {
-          return true;
-        }
-      }
-      if (isCoordinator && (!field || ['teams_link', 'mohfez', 'time_start', 'time_end'].includes(field))) {
+    // المشرف العلمي للمجموعة له صلاحية على تعديل التوقيت ورابط تيمز
+    if (isGroupSciSup) {
+      if (!field || ['teams_link', 'time_start', 'time_end'].includes(field)) {
         return true;
       }
     }
 
-    if (isGroupCoord && (!field || ['teams_link', 'mohfez', 'time_start', 'time_end'].includes(field))) {
-      return true;
+    // منسق المجموعة له صلاحية إدخال رابط تيمز وتوقيت مجموعته
+    if (isGroupCoord) {
+      if (!field || ['teams_link', 'time_start', 'time_end'].includes(field)) {
+        return true;
+      }
     }
 
     return false;
@@ -1192,7 +1206,7 @@ function PlatformApplicantsList() {
         >
           <Layers size={16} /> المجموعات اليومية الـ 40
         </button>
-        {isAdminOrSupervisor && (
+        {isAdmin && (
           <button
             className={`btn ${activeTab === 'compatible' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('compatible')}
@@ -1261,20 +1275,24 @@ function PlatformApplicantsList() {
                   value={filterGroupNo}
                   onChange={e => { setFilterGroupNo(e.target.value); setCurrentPage(1); }}
                 >
-                  <option value="">--- كل المجموعات (1 - 40) ---</option>
+                  <option value="">{myGroupNumbers === null ? '--- كل المجموعات (1 - 40) ---' : '--- مجموعاتي المصرحة ---'}</option>
                   <optgroup label="المجموعات 1 - 20">
-                    {placementGroups.filter(g => g.group_no <= 20).map(g => (
-                      <option key={g.group_no} value={g.group_no}>
-                        مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''}
-                      </option>
-                    ))}
+                    {placementGroups
+                      .filter(g => g.group_no <= 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
+                      .map(g => (
+                        <option key={g.group_no} value={g.group_no}>
+                          مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''}
+                        </option>
+                      ))}
                   </optgroup>
                   <optgroup label="المجموعات 21 - 40">
-                    {placementGroups.filter(g => g.group_no > 20).map(g => (
-                      <option key={g.group_no} value={g.group_no}>
-                        مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''}
-                      </option>
-                    ))}
+                    {placementGroups
+                      .filter(g => g.group_no > 20 && (myGroupNumbers === null || myGroupNumbers.has(Number(g.group_no))))
+                      .map(g => (
+                        <option key={g.group_no} value={g.group_no}>
+                          مجموعة {g.group_no} {g.mohfez ? `- ${g.mohfez}` : ''}
+                        </option>
+                      ))}
                   </optgroup>
                 </select>
               </div>
@@ -1496,7 +1514,7 @@ function PlatformApplicantsList() {
                   <Plus size={16} /> إضافة متقدم
                 </Link>
               )}
-              {isAdminOrSupervisor && (
+              {isAdmin && (
                 <>
                   <button className="btn btn-gold-outline" onClick={() => importRef.current.click()}>
                     <Upload size={16} /> استيراد من إكسيل
@@ -1533,7 +1551,7 @@ function PlatformApplicantsList() {
                 <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
                 {isRefreshing ? 'جارٍ التحديث...' : 'تحديث البيانات من السيرفر'}
               </button>
-              {isAdminOrSupervisor && (
+              {isAdmin && (
                 <button
                   className="btn btn-outline"
                   onClick={handleSyncGroupTeamsLinks}
@@ -1740,7 +1758,7 @@ function PlatformApplicantsList() {
                               <Edit size={16} />
                             </Link>
                           )}
-                          {isAdminOrSupervisor && (
+                          {isAdmin && (
                             <button className="action-icon delete" title="حذف" onClick={() => deletePlatformApplicant(a.id)}>
                               <Trash2 size={16} />
                             </button>
@@ -1862,7 +1880,7 @@ function PlatformApplicantsList() {
               >
                 <Download size={16} /> {printGroupNo ? `تصدير مجموعة (${printGroupNo}) إكسيل` : 'تصدير جميع المجموعات إكسيل'}
               </button>
-              {isAdminOrSupervisor && (
+              {isAdmin && (
                 <button
                   className="btn btn-primary"
                   style={{ height: 38, display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#059669', borderColor: '#059669' }}
@@ -1877,7 +1895,7 @@ function PlatformApplicantsList() {
           </div>
 
           {/* أداة تسكين مشرف علمي أو مشرف تقني لعدد من المجموعات دفعة واحدة */}
-          {isAdminOrSupervisor && (
+          {isAdmin && (
             <div className="box-card" style={{ padding: '16px 20px', marginBottom: 20 }}>
               <div style={{ fontSize: 15, fontWeight: 'bold', color: 'var(--accent-gold)', marginBottom: 12 }}>
                 تسكين مشرف (علمي / تقني) للإشراف على عدد من المجموعات دفعة واحدة:
@@ -1982,6 +2000,12 @@ function PlatformApplicantsList() {
             </div>
           )}
 
+          {myGroupNumbers !== null && myGroupNumbers.size === 0 && (
+            <div className="box-card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', marginBottom: 20 }}>
+              لا توجد مجموعات تحديد مستوى مسندة إليك حالياً.
+            </div>
+          )}
+
           {[
             { title: 'المجموعات من 1 إلى 10', min: 1, max: 10, badgeColor: '#3b82f6' },
             { title: 'المجموعات من 11 إلى 20', min: 11, max: 20, badgeColor: '#10b981' },
@@ -2044,7 +2068,7 @@ function PlatformApplicantsList() {
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                       المسكنون في الـ 10 مجموعات: <strong style={{ color: '#fff' }}>{totalApplicantsInShift}</strong> دارس
                     </span>
-                    {isAdminOrSupervisor && (
+                    {isAdmin && (
                       <button
                         type="button"
                         className="btn btn-outline"
@@ -2121,7 +2145,7 @@ function PlatformApplicantsList() {
                               )}
                             </td>
                             <td style={{ minWidth: 185 }}>
-                              {isAdminOrSupervisor ? (
+                              {isAdmin ? (
                                 <select
                                   className="form-select"
                                   style={{ padding: '5px 8px', fontSize: 13 }}
@@ -2140,7 +2164,7 @@ function PlatformApplicantsList() {
                               )}
                             </td>
                             <td style={{ minWidth: 185 }}>
-                              {isAdminOrSupervisor ? (
+                              {isAdmin ? (
                                 <select
                                   className="form-select"
                                   style={{ padding: '5px 8px', fontSize: 13 }}
@@ -2296,7 +2320,7 @@ function PlatformApplicantsList() {
       )}
 
       {/* ───────── التبويب الثالث: المجموعات المتوافقة لدمجها في الحلقات الأصلية (5 دارسين) ───────── */}
-      {activeTab === 'compatible' && isAdminOrSupervisor && (
+      {activeTab === 'compatible' && isAdmin && (
         <div className="box-card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
             <div>

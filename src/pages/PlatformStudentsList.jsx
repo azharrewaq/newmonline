@@ -66,21 +66,23 @@ function PlatformStudentsList() {
   const availableSessions = useMemo(() => {
     return filterSessionsForUser(platformSessions, currentUser, {
       platformCoordinators,
+      platformSupervisors,
       platformMohfezs,
       platformStudents,
       users
     });
-  }, [platformSessions, currentUser, platformCoordinators, platformMohfezs, platformStudents, users]);
+  }, [platformSessions, currentUser, platformCoordinators, platformSupervisors, platformMohfezs, platformStudents, users]);
 
-  // 2. تصفية الدارسين بدقة حسب نطاق المستخدم (المنسق يرى طلاب حلقاته فقط، المحفظ يرى طلاب حلقاته فقط، والدارس يرى نفسه فقط)
+  // 2. تصفية الدارسين بدقة حسب نطاق المستخدم (المشرف/المنسق يرى طلاب حلقاته فقط، المحفظ يرى طلاب حلقاته فقط، والدارس يرى نفسه فقط)
   const scopedStudents = useMemo(() => {
     return filterStudentsForUser(platformStudents, currentUser, {
       platformSessions,
       platformCoordinators,
+      platformSupervisors,
       platformMohfezs,
       users
     });
-  }, [platformStudents, currentUser, platformSessions, platformCoordinators, platformMohfezs, users]);
+  }, [platformStudents, currentUser, platformSessions, platformCoordinators, platformSupervisors, platformMohfezs, users]);
 
   const filtered = scopedStudents.filter(s => {
     return (

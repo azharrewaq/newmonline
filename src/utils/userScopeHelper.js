@@ -172,6 +172,54 @@ export const isSessionTaughtByMohfez = (session, user, platformMohfezs = [], use
 };
 
 /**
+ * التحقق مما إذا كانت الحلقة تحت إشراف المشرف الحالي
+ */
+export const isSessionSupervisedBySupervisor = (session, user, platformSupervisors = [], users = []) => {
+  if (!session || !user) return false;
+
+  const userNormName = normalizeArabic(user.name || '');
+  const userNationalId = String(user.national_id || user.username || '').trim();
+
+  // 1. التطابق المباشر مع حقول المشرف في الحلقة
+  const supFields = [
+    session.supervisor,
+    session.scientific_supervisor,
+    session.technical_supervisor,
+  ].filter(Boolean).map(normalizeArabic);
+
+  if (userNormName && supFields.includes(userNormName)) {
+    return true;
+  }
+
+  // 2. التطابق عبر سجلات المشرفين
+  const matchedSupRecord = platformSupervisors.find(s => 
+    (s.national_id && String(s.national_id).trim() === userNationalId) ||
+    (s.username && String(s.username).trim() === String(user.username || '').trim()) ||
+    (s.name && normalizeArabic(s.name) === userNormName)
+  );
+
+  if (matchedSupRecord) {
+    const sName = normalizeArabic(matchedSupRecord.name || '');
+    if (sName && supFields.includes(sName)) {
+      return true;
+    }
+  }
+
+  // 3. التطابق عبر userSession
+  if (user.userSession) {
+    const sId = String(session.id);
+    const sNo = String(session.session_no || '');
+    const sName = String(session.session_name || '');
+    const uS = String(user.userSession);
+    if (sId === uS || sNo === uS || sName === uS) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/**
  * التحقق مما إذا كانت الحلقة مسجلاً بها الدارس الحالي
  */
 export const isSessionAttendedByStudent = (session, user, platformStudents = []) => {
@@ -223,6 +271,7 @@ export const isSessionAttendedByStudent = (session, user, platformStudents = [])
  */
 export const isUserAllowedSession = (session, user, {
   platformCoordinators = [],
+  platformSupervisors = [],
   platformMohfezs = [],
   platformStudents = [],
   users = []
@@ -231,9 +280,14 @@ export const isUserAllowedSession = (session, user, {
 
   const role = user.role || 'admin';
 
-  // المدراء والمشرفون العامون يرون كل شيء
-  if (['admin', 'platform_admin', 'platform_supervisor', 'rowaq_admin', 'rowaq_manager', 'rowaq_tech'].includes(role)) {
+  // المدراء العامون فقط يرون كل شيء
+  if (['admin', 'platform_admin', 'rowaq_admin', 'rowaq_manager', 'rowaq_tech'].includes(role)) {
     return true;
+  }
+
+  // مشرف المنصة: يرى حلقاته ومجموعاته المشرف عليها فقط
+  if (role === 'platform_supervisor') {
+    return isSessionSupervisedBySupervisor(session, user, platformSupervisors, users);
   }
 
   // منسق المنصة
@@ -278,7 +332,7 @@ export const filterSessionsForUser = (sessions, user, contextData = {}) => {
   if (!user) return [];
 
   const role = user.role || 'admin';
-  if (['admin', 'platform_admin', 'platform_supervisor'].includes(role)) {
+  if (['admin', 'platform_admin'].includes(role)) {
     return sessions;
   }
 
@@ -291,6 +345,7 @@ export const filterSessionsForUser = (sessions, user, contextData = {}) => {
 export const filterStudentsForUser = (students, user, {
   platformSessions = [],
   platformCoordinators = [],
+  platformSupervisors = [],
   platformMohfezs = [],
   users = []
 } = {}) => {
@@ -299,8 +354,8 @@ export const filterStudentsForUser = (students, user, {
 
   const role = user.role || 'admin';
 
-  // المدراء والمشرفون
-  if (['admin', 'platform_admin', 'platform_supervisor'].includes(role)) {
+  // المدراء العامون فقط يرون كل الدارسين
+  if (['admin', 'platform_admin'].includes(role)) {
     return students;
   }
 
@@ -314,6 +369,24 @@ export const filterStudentsForUser = (students, user, {
       const nId = String(s.national_id || '').trim();
       const sName = normalizeArabic(s.name || '');
       return (pNo && pNo === userNationalId) || (nId && nId === userNationalId) || (sName && sName === userNormName);
+    });
+  }
+
+  // المشرف يرى فقط طلاب الحلقات التي يشرف عليها
+  if (role === 'platform_supervisor') {
+    const supervisedSessions = platformSessions.filter(sess =>
+      isSessionSupervisedBySupervisor(sess, user, platformSupervisors, users)
+    );
+    const supervisedIds = new Set();
+    supervisedSessions.forEach(s => {
+      supervisedIds.add(String(s.id));
+      if (s.session_no) supervisedIds.add(String(s.session_no));
+      if (s.session_name) supervisedIds.add(String(s.session_name));
+    });
+
+    return students.filter(st => {
+      const stSess = String(st.session_id || st.session_no || '');
+      return stSess && supervisedIds.has(stSess);
     });
   }
 
@@ -358,6 +431,7 @@ export const filterStudentsForUser = (students, user, {
 
 /**
  * تصفية قائمة المحفظين بحيث:
+ * - المشرف يرى محفظي حلقاته المشرف عليها فقط
  * - المنسق يرى محفظي حلقاته المشرف عليها فقط
  * - المحفظ يرى نفسه فقط
  * - الدارس يرى محفظ حلقته فقط
@@ -365,6 +439,7 @@ export const filterStudentsForUser = (students, user, {
 export const filterMohfezsForUser = (mohfezs, user, {
   platformSessions = [],
   platformCoordinators = [],
+  platformSupervisors = [],
   platformStudents = [],
   users = []
 } = {}) => {
@@ -372,7 +447,7 @@ export const filterMohfezsForUser = (mohfezs, user, {
   if (!user) return [];
 
   const role = user.role || 'admin';
-  if (['admin', 'platform_admin', 'platform_supervisor'].includes(role)) {
+  if (['admin', 'platform_admin'].includes(role)) {
     return mohfezs;
   }
 
@@ -386,6 +461,19 @@ export const filterMohfezsForUser = (mohfezs, user, {
       const mName = normalizeArabic(m.name || '');
       return (mNationalId && mNationalId === userNationalId) || (mName && mName === userNormName);
     });
+  }
+
+  // المشرف يرى فقط محفظي الحلقات التي يشرف عليها
+  if (role === 'platform_supervisor') {
+    const supervisedSessions = platformSessions.filter(sess =>
+      isSessionSupervisedBySupervisor(sess, user, platformSupervisors, users)
+    );
+    const supervisedMohfezs = new Set();
+    supervisedSessions.forEach(s => {
+      if (s.mohfez) supervisedMohfezs.add(normalizeArabic(s.mohfez));
+    });
+
+    return mohfezs.filter(m => supervisedMohfezs.has(normalizeArabic(m.name || '')));
   }
 
   // المنسق يرى فقط محفظي الحلقات التي يشرف عليها
@@ -418,11 +506,13 @@ export const filterMohfezsForUser = (mohfezs, user, {
 
 /**
  * تصفية قائمة المنسقين بحيث:
+ * - المشرف يرى منسقي حلقاته المشرف عليها فقط
  * - المنسق يرى نفسه فقط
  * - المحفظ أو الدارس يرى منسق حلقته فقط
  */
 export const filterCoordinatorsForUser = (coordinators, user, {
   platformSessions = [],
+  platformSupervisors = [],
   platformMohfezs = [],
   platformStudents = [],
   users = []
@@ -431,7 +521,7 @@ export const filterCoordinatorsForUser = (coordinators, user, {
   if (!user) return [];
 
   const role = user.role || 'admin';
-  if (['admin', 'platform_admin', 'platform_supervisor'].includes(role)) {
+  if (['admin', 'platform_admin'].includes(role)) {
     return coordinators;
   }
 
@@ -445,6 +535,19 @@ export const filterCoordinatorsForUser = (coordinators, user, {
       const cName = normalizeArabic(c.name || '');
       return (cNationalId && cNationalId === userNationalId) || (cName && cName === userNormName);
     });
+  }
+
+  // المشرف يرى فقط منسقي الحلقات التي يشرف عليها
+  if (role === 'platform_supervisor') {
+    const supervisedSessions = platformSessions.filter(sess =>
+      isSessionSupervisedBySupervisor(sess, user, platformSupervisors, users)
+    );
+    const supervisedCoords = new Set();
+    supervisedSessions.forEach(s => {
+      if (s.coordinator) supervisedCoords.add(normalizeArabic(s.coordinator));
+    });
+
+    return coordinators.filter(c => supervisedCoords.has(normalizeArabic(c.name || '')));
   }
 
   // المحفظ يرى منسق حلقته
@@ -469,6 +572,85 @@ export const filterCoordinatorsForUser = (coordinators, user, {
       if (s.coordinator) coordNames.add(normalizeArabic(s.coordinator));
     });
     return coordinators.filter(c => coordNames.has(normalizeArabic(c.name || '')));
+  }
+
+  return [];
+};
+
+/**
+ * تصفية قائمة المشرفين بحيث:
+ * - المدير يرى الجميع
+ * - المشرف يرى نفسه فقط
+ * - المنسق أو المحفظ يرى مشرف حلقاته فقط
+ * - الدارس يرى مشرف حلقته
+ */
+export const filterSupervisorsForUser = (supervisors, user, {
+  platformSessions = [],
+  platformCoordinators = [],
+  platformMohfezs = [],
+  platformStudents = [],
+  users = []
+} = {}) => {
+  if (!supervisors || !Array.isArray(supervisors)) return [];
+  if (!user) return [];
+
+  const role = user.role || 'admin';
+  if (['admin', 'platform_admin'].includes(role)) {
+    return supervisors;
+  }
+
+  const userNormName = normalizeArabic(user.name || '');
+  const userNationalId = String(user.national_id || user.username || '').trim();
+
+  // المشرف يرى نفسه فقط
+  if (role === 'platform_supervisor') {
+    return supervisors.filter(s => {
+      const sNationalId = String(s.national_id || '').trim();
+      const sName = normalizeArabic(s.name || '');
+      return (sNationalId && sNationalId === userNationalId) || (sName && sName === userNormName);
+    });
+  }
+
+  // المنسق يرى مشرف الحلقات التي ينسقها
+  if (role === 'platform_coordinator') {
+    const mySessions = platformSessions.filter(sess =>
+      isSessionSupervisedByCoordinator(sess, user, platformCoordinators, users)
+    );
+    const supNames = new Set();
+    mySessions.forEach(s => {
+      if (s.supervisor) supNames.add(normalizeArabic(s.supervisor));
+      if (s.scientific_supervisor) supNames.add(normalizeArabic(s.scientific_supervisor));
+      if (s.technical_supervisor) supNames.add(normalizeArabic(s.technical_supervisor));
+    });
+    return supervisors.filter(s => supNames.has(normalizeArabic(s.name || '')));
+  }
+
+  // المحفظ يرى مشرف حلقاته
+  if (role === 'platform_mohfez' || role === 'mohfez') {
+    const mySessions = platformSessions.filter(sess =>
+      isSessionTaughtByMohfez(sess, user, platformMohfezs, users)
+    );
+    const supNames = new Set();
+    mySessions.forEach(s => {
+      if (s.supervisor) supNames.add(normalizeArabic(s.supervisor));
+      if (s.scientific_supervisor) supNames.add(normalizeArabic(s.scientific_supervisor));
+      if (s.technical_supervisor) supNames.add(normalizeArabic(s.technical_supervisor));
+    });
+    return supervisors.filter(s => supNames.has(normalizeArabic(s.name || '')));
+  }
+
+  // الدارس يرى مشرف حلقته
+  if (role === 'student') {
+    const mySessions = platformSessions.filter(sess =>
+      isSessionAttendedByStudent(sess, user, platformStudents)
+    );
+    const supNames = new Set();
+    mySessions.forEach(s => {
+      if (s.supervisor) supNames.add(normalizeArabic(s.supervisor));
+      if (s.scientific_supervisor) supNames.add(normalizeArabic(s.scientific_supervisor));
+      if (s.technical_supervisor) supNames.add(normalizeArabic(s.technical_supervisor));
+    });
+    return supervisors.filter(s => supNames.has(normalizeArabic(s.name || '')));
   }
 
   return [];

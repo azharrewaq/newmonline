@@ -22,38 +22,42 @@ function PlatformDashboard() {
 
   const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
   const role = currentUser?.role || 'admin';
+  const isSupervisor = role === 'platform_supervisor';
   const isCoordinator = role === 'platform_coordinator';
   const isMohfez = role === 'platform_mohfez' || role === 'mohfez';
   const isStudent = role === 'student' || role === 'sharia_student';
-  const isRestricted = isCoordinator || isMohfez || isStudent;
+  const isRestricted = isCoordinator || isMohfez || isSupervisor || isStudent;
 
   // الحلقات والدارسون والمحفظون المخصصون للمستخدم الحالي فقط
   const scopedSessions = React.useMemo(() => {
     return filterSessionsForUser(platformSessions, currentUser, {
       platformCoordinators,
+      platformSupervisors,
       platformMohfezs,
       platformStudents,
       users
     });
-  }, [platformSessions, currentUser, platformCoordinators, platformMohfezs, platformStudents, users]);
+  }, [platformSessions, currentUser, platformCoordinators, platformSupervisors, platformMohfezs, platformStudents, users]);
 
   const scopedStudents = React.useMemo(() => {
     return filterStudentsForUser(platformStudents, currentUser, {
       platformSessions,
       platformCoordinators,
+      platformSupervisors,
       platformMohfezs,
       users
     });
-  }, [platformStudents, currentUser, platformSessions, platformCoordinators, platformMohfezs, users]);
+  }, [platformStudents, currentUser, platformSessions, platformCoordinators, platformSupervisors, platformMohfezs, users]);
 
   const scopedMohfezs = React.useMemo(() => {
     return filterMohfezsForUser(platformMohfezs, currentUser, {
       platformSessions,
       platformCoordinators,
+      platformSupervisors,
       platformStudents,
       users
     });
-  }, [platformMohfezs, currentUser, platformSessions, platformCoordinators, platformStudents, users]);
+  }, [platformMohfezs, currentUser, platformSessions, platformCoordinators, platformSupervisors, platformStudents, users]);
 
   // Compute active sessions count in real-time (من الحلقات التابعة للمستخدم فقط)
   const activeSessionsCount = scopedSessions ? scopedSessions.filter(s => {
@@ -102,6 +106,37 @@ function PlatformDashboard() {
         value: scopedStudents.length,
         iconColor: '#06b6d4',
         iconType: 'users'
+      },
+      {
+        id: 4,
+        title: 'الحلقات الجارية الآن',
+        value: activeSessionsCount,
+        iconColor: '#10b981',
+        iconType: 'book'
+      }
+    ];
+  } else if (isSupervisor) {
+    dynamicStats = [
+      {
+        id: 1,
+        title: 'الحلقات المشرف عليها',
+        value: scopedSessions.length,
+        iconColor: '#3b82f6',
+        iconType: 'book-open'
+      },
+      {
+        id: 2,
+        title: 'الدارسين تحت إشرافي',
+        value: scopedStudents.length,
+        iconColor: '#06b6d4',
+        iconType: 'users'
+      },
+      {
+        id: 3,
+        title: 'المحفظين تحت إشرافي',
+        value: scopedMohfezs.length,
+        iconColor: '#22c55e',
+        iconType: 'user-check'
       },
       {
         id: 4,

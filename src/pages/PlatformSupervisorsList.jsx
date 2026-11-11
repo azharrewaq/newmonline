@@ -1,18 +1,44 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, Download, Upload, Edit, Trash2 } from 'lucide-react';
 import '../components/Management.css';
 import { useAppData } from '../context/AppDataContext';
 import { exportToXLSX, importFromXLSX } from '../utils/xlsxHelper';
+import { filterSupervisorsForUser } from '../utils/userScopeHelper';
 
 function PlatformSupervisorsList() {
-  const { platformSupervisors, deletePlatformSupervisor, addPlatformSupervisor, deleteAllPlatformSupervisors } = useAppData();
+  const { 
+    platformSupervisors, 
+    deletePlatformSupervisor, 
+    addPlatformSupervisor, 
+    deleteAllPlatformSupervisors,
+    platformSessions = [],
+    platformCoordinators = [],
+    platformMohfezs = [],
+    platformStudents = [],
+    users = []
+  } = useAppData();
   const importRef = useRef(null);
   
+  const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
+  const role = currentUser?.role || 'admin';
+  const isAdmin = role === 'admin' || role === 'platform_admin';
+
   const [filterName, setFilterName] = useState('');
   const [filterSpecialization, setFilterSpecialization] = useState('');
 
-  const filtered = platformSupervisors.filter(c =>
+  // تصفية المشرفين وفق نطاق المستخدم (المشرف يرى نفسه فقط، المدير يرى الجميع)
+  const scopedSupervisors = useMemo(() => {
+    return filterSupervisorsForUser(platformSupervisors, currentUser, {
+      platformSessions,
+      platformCoordinators,
+      platformMohfezs,
+      platformStudents,
+      users
+    });
+  }, [platformSupervisors, currentUser, platformSessions, platformCoordinators, platformMohfezs, platformStudents, users]);
+
+  const filtered = scopedSupervisors.filter(c =>
     (filterName ? c.name?.includes(filterName) : true) &&
     (filterSpecialization ? c.specialization === filterSpecialization : true)
   );
@@ -92,20 +118,24 @@ function PlatformSupervisorsList() {
 
       <div className="table-controls" style={{ justifyContent: 'space-between', flexDirection: 'row-reverse' }}>
         <div className="action-buttons" style={{ flexDirection: 'row-reverse' }}>
-          <Link to="/platform-supervisors/create" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-            <Plus size={16} /> إضافة مشرف
-          </Link>
-          <button className="btn btn-gold-outline" onClick={() => importRef.current.click()}>
-            <Upload size={16} /> استيراد
-          </button>
-          <button className="btn btn-outline" onClick={handleExportTemplate}>
-            <Download size={16} /> تصدير نموذج
-          </button>
-          <input ref={importRef} type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleImport} />
-          {platformSupervisors.length > 0 && (
-            <button className="btn btn-danger" onClick={deleteAllPlatformSupervisors}>
-              حذف الجميع
-            </button>
+          {isAdmin && (
+            <>
+              <Link to="/platform-supervisors/create" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+                <Plus size={16} /> إضافة مشرف
+              </Link>
+              <button className="btn btn-gold-outline" onClick={() => importRef.current.click()}>
+                <Upload size={16} /> استيراد
+              </button>
+              <button className="btn btn-outline" onClick={handleExportTemplate}>
+                <Download size={16} /> تصدير نموذج
+              </button>
+              <input ref={importRef} type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleImport} />
+              {platformSupervisors.length > 0 && (
+                <button className="btn btn-danger" onClick={deleteAllPlatformSupervisors}>
+                  حذف الجميع
+                </button>
+              )}
+            </>
           )}
           <button className="btn btn-outline" onClick={handleExport}>
             <Download size={16} /> تصدير
@@ -123,13 +153,13 @@ function PlatformSupervisorsList() {
               <th>رقم السجل</th>
               <th>الرقم القومي</th>
               <th>الهاتف</th>
-              <th>الإجراءات</th>
+              {isAdmin && <th>الإجراءات</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
+                <td colSpan={isAdmin ? "6" : "5"} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
                   لا توجد بيانات.
                 </td>
               </tr>
@@ -141,10 +171,12 @@ function PlatformSupervisorsList() {
                   <td>{c.registry_no}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{c.national_id}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{c.phone}</td>
-                  <td className="actions-cell">
-                    <Link to={`/platform-supervisors/create?id=${c.id}`} className="action-icon edit" style={{textDecoration: 'none', color: 'inherit'}}><Edit size={16}/></Link>
-                    <button className="action-icon delete" onClick={() => deletePlatformSupervisor(c.id)}><Trash2 size={16}/></button>
-                  </td>
+                  {isAdmin && (
+                    <td className="actions-cell">
+                      <Link to={`/platform-supervisors/create?id=${c.id}`} className="action-icon edit" style={{textDecoration: 'none', color: 'inherit'}}><Edit size={16}/></Link>
+                      <button className="action-icon delete" onClick={() => deletePlatformSupervisor(c.id)}><Trash2 size={16}/></button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
