@@ -139,6 +139,7 @@ function PlatformApplicantsList() {
   const [compatStatusFilter, setCompatStatusFilter] = useState('all'); // 'all' | 'complete' | 'pending'
   const [compatRowaqFilter, setCompatRowaqFilter] = useState('');
   const [compatLevelFilter, setCompatLevelFilter] = useState('');
+  const [compatDaysFilter, setCompatDaysFilter] = useState('');
   const [compatTimeFilter, setCompatTimeFilter] = useState('');
   const [compatSearch, setCompatSearch] = useState('');
   const [compatPage, setCompatPage] = useState(1);
@@ -886,7 +887,7 @@ function PlatformApplicantsList() {
     e.target.value = '';
   };
 
-  // تجميع المتقدمين المتوافقين في (نوع الرواق + المستوى المحدد + السورة المتوقف عندها + التوقيت المختار)
+  // تجميع المتقدمين المتوافقين في (نوع الرواق + المستوى المحدد + السورة المتوقف عندها + الأيام المناسبة + التوقيت المختار)
   // وتقسيم كل فئة متطابقة إلى مجموعات سعة كل منها 5 دارسين متوافقين بالضبط لدمجهم في الحلقات الأصلية
   const {
     allCompatibleGroups,
@@ -905,10 +906,11 @@ function PlatformApplicantsList() {
       if (!r || !effLevel) return;
 
       const surah = (a.stopped_surah || 'غير محدد').trim();
+      const prefDays = normalizePreferredDays(a.preferred_days || '') || 'غير محدد';
       const prefTime = (a.preferred_time || 'غير محدد').trim();
 
-      // المعايير الأربعة المتوافقة للدمج: نوع الرواق + المستوى + السورة + التوقيت
-      const bucketKey = `${r}__${effLevel}__${surah}__${prefTime}`;
+      // معايير التوافق التام للدمج: نوع الرواق + المستوى + السورة + الأيام المناسبة + التوقيت
+      const bucketKey = `${r}__${effLevel}__${surah}__${prefDays}__${prefTime}`;
 
       if (!bucketsMap[bucketKey]) {
         bucketsMap[bucketKey] = {
@@ -916,6 +918,7 @@ function PlatformApplicantsList() {
           rowaq: r,
           level: effLevel,
           stopped_surah: surah,
+          preferred_days: prefDays,
           preferred_time: prefTime,
           applicants: [],
         };
@@ -950,6 +953,7 @@ function PlatformApplicantsList() {
           rowaq: bucket.rowaq,
           level: bucket.level,
           stopped_surah: bucket.stopped_surah,
+          preferred_days: bucket.preferred_days,
           preferred_time: bucket.preferred_time,
           members: chunk,
           count: chunk.length,
@@ -994,10 +998,12 @@ function PlatformApplicantsList() {
       if (compatStatusFilter === 'pending' && g.isComplete) return false;
       if (compatRowaqFilter && g.rowaq !== compatRowaqFilter) return false;
       if (compatLevelFilter && g.level !== compatLevelFilter) return false;
+      if (compatDaysFilter && g.preferred_days !== compatDaysFilter) return false;
       if (compatTimeFilter && g.preferred_time !== compatTimeFilter) return false;
       if (compatSearch) {
         const q = normalizeArabic(compatSearch.trim());
         const matchSurah = normalizeArabic(g.stopped_surah).includes(q);
+        const matchDays = normalizeArabic(g.preferred_days).includes(q);
         const matchTime = normalizeArabic(g.preferred_time).includes(q);
         const matchNo = String(g.displayNo).includes(q);
         const matchMember = g.members.some(m =>
@@ -1005,11 +1011,11 @@ function PlatformApplicantsList() {
           String(m.national_id || m.passport_no || '').includes(q) ||
           String(m.phone || '').includes(q)
         );
-        if (!matchSurah && !matchTime && !matchNo && !matchMember) return false;
+        if (!matchSurah && !matchDays && !matchTime && !matchNo && !matchMember) return false;
       }
       return true;
     });
-  }, [allCompatibleGroups, compatStatusFilter, compatRowaqFilter, compatLevelFilter, compatTimeFilter, compatSearch]);
+  }, [allCompatibleGroups, compatStatusFilter, compatRowaqFilter, compatLevelFilter, compatDaysFilter, compatTimeFilter, compatSearch]);
 
   const totalCompatPages = Math.max(1, Math.ceil(filteredCompatibleGroups.length / compatPageSize));
   const paginatedCompatibleGroups = useMemo(() => {
@@ -1030,8 +1036,9 @@ function PlatformApplicantsList() {
       'الرواق': group.rowaq,
       'المستوى': m.tested_level || group.level,
       'السورة المتوقف عندها': group.stopped_surah,
-      'التوقيت المختار': group.preferred_time,
-      'الأيام المناسبة للدارس': m.preferred_days || '',
+      'الأيام المناسبة للمجموعة': group.preferred_days,
+      'التوقيت المختار للمجموعة': group.preferred_time,
+      'الأيام المسجلة للدارس': m.preferred_days || '',
     }));
     exportToXLSX(rows, `مجموعة_متوافقة_${group.displayNo}_(5_دارسين)`, `مجموعة ${group.displayNo}`);
   };
@@ -1055,8 +1062,9 @@ function PlatformApplicantsList() {
           'الرواق': g.rowaq,
           'المستوى المحدد': m.tested_level || g.level,
           'السورة المتوقف عندها': g.stopped_surah,
-          'التوقيت المختار': g.preferred_time,
-          'الأيام المناسبة للدارس': m.preferred_days || '',
+          'الأيام المناسبة للمجموعة': g.preferred_days,
+          'التوقيت المختار للمجموعة': g.preferred_time,
+          'الأيام المسجلة للدارس': m.preferred_days || '',
         });
       });
     });
@@ -1083,8 +1091,9 @@ function PlatformApplicantsList() {
           'الرواق': g.rowaq,
           'المستوى المحدد': m.tested_level || g.level,
           'السورة المتوقف عندها': g.stopped_surah,
-          'التوقيت المختار': g.preferred_time,
-          'الأيام المناسبة للدارس': m.preferred_days || '',
+          'الأيام المناسبة للمجموعة': g.preferred_days,
+          'التوقيت المختار للمجموعة': g.preferred_time,
+          'الأيام المسجلة للدارس': m.preferred_days || '',
         });
       });
     });
@@ -1098,6 +1107,7 @@ function PlatformApplicantsList() {
       `🔹 الرواق: ${group.rowaq}`,
       `🔹 المستوى: ${group.level}`,
       `🔹 السورة المتوقف عندها: ${group.stopped_surah}`,
+      `🔹 الأيام المناسبة: ${group.preferred_days}`,
       `🔹 التوقيت المختار: ${group.preferred_time}`,
       `──────── الدارسون (${group.count}) ────────`,
     ];
@@ -1134,7 +1144,7 @@ function PlatformApplicantsList() {
         stopped_surah: mergeModalGroup.stopped_surah,
         session_no: targetSession,
         status: 'منتظم',
-        notes: `تم التسكين من المجموعات المتوافقة رقم ${mergeModalGroup.displayNo} (التوقيت: ${mergeModalGroup.preferred_time})`,
+        notes: `تم التسكين من المجموعات المتوافقة رقم ${mergeModalGroup.displayNo} (الأيام: ${mergeModalGroup.preferred_days} | التوقيت: ${mergeModalGroup.preferred_time})`,
       }));
 
       if (typeof bulkImportPlatformStudents === 'function') {
@@ -2294,7 +2304,7 @@ function PlatformApplicantsList() {
                 المجموعات المتوافقة للدمج في الحلقات الأصلية (5 دارسين لكل مجموعة)
               </h3>
               <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
-                تجميع وتوزيع الدارسين المتوافقين تماماً في: <strong>نوع الرواق</strong>، <strong>المستوى</strong>، <strong>السورة المتوقف عندها</strong>، و<strong>التوقيت المختار</strong> إلى مجموعات سعة كل منها (5) دارسين لتسكينهم فوراً في الحلقات الأصلية.
+                تجميع وتوزيع الدارسين المتوافقين تماماً في: <strong>نوع الرواق</strong>، <strong>المستوى</strong>، <strong>السورة المتوقف عندها</strong>، <strong>الأيام المناسبة</strong>، و<strong>التوقيت المختار</strong> إلى مجموعات سعة كل منها (5) دارسين لتسكينهم فوراً في الحلقات الأصلية.
               </p>
             </div>
 
@@ -2416,7 +2426,7 @@ function PlatformApplicantsList() {
             </div>
 
             {/* صف الفلاتر التفصيلية */}
-            <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+            <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
               <div className="form-group">
                 <label style={{ fontSize: 12, marginBottom: 4 }}>نوع الرواق:</label>
                 <select
@@ -2448,6 +2458,21 @@ function PlatformApplicantsList() {
               </div>
 
               <div className="form-group">
+                <label style={{ fontSize: 12, marginBottom: 4 }}>الأيام المناسبة:</label>
+                <select
+                  value={compatDaysFilter}
+                  onChange={e => { setCompatDaysFilter(e.target.value); setCompatPage(1); }}
+                  className="form-control"
+                  style={{ fontSize: 13 }}
+                >
+                  <option value="">-- جميع الأيام --</option>
+                  {PREFERRED_DAYS_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label style={{ fontSize: 12, marginBottom: 4 }}>التوقيت المختار:</label>
                 <select
                   value={compatTimeFilter}
@@ -2468,13 +2493,13 @@ function PlatformApplicantsList() {
                   type="text"
                   value={compatSearch}
                   onChange={e => { setCompatSearch(e.target.value); setCompatPage(1); }}
-                  placeholder="ابحث بالاسم أو السورة أو التوقيت..."
+                  placeholder="ابحث بالاسم أو السورة أو الأيام أو التوقيت..."
                   className="form-control"
                   style={{ fontSize: 13 }}
                 />
               </div>
 
-              {(compatRowaqFilter || compatLevelFilter || compatTimeFilter || compatSearch || compatStatusFilter !== 'all') && (
+              {(compatRowaqFilter || compatLevelFilter || compatDaysFilter || compatTimeFilter || compatSearch || compatStatusFilter !== 'all') && (
                 <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                   <button
                     type="button"
@@ -2483,6 +2508,7 @@ function PlatformApplicantsList() {
                     onClick={() => {
                       setCompatRowaqFilter('');
                       setCompatLevelFilter('');
+                      setCompatDaysFilter('');
                       setCompatTimeFilter('');
                       setCompatSearch('');
                       setCompatStatusFilter('all');
@@ -2506,6 +2532,7 @@ function PlatformApplicantsList() {
                   <th style={{ textAlign: 'center' }}>الرواق</th>
                   <th style={{ textAlign: 'center' }}>المستوى المحدد</th>
                   <th style={{ textAlign: 'center' }}>السورة المتوقف عندها</th>
+                  <th style={{ textAlign: 'center' }}>الأيام المناسبة</th>
                   <th style={{ textAlign: 'center' }}>التوقيت المختار</th>
                   <th style={{ textAlign: 'center', width: 130 }}>حالة الاكتمال</th>
                   <th style={{ textAlign: 'center', minWidth: 260 }}>أعضاء المجموعة (الـ 5 دارسين)</th>
@@ -2515,7 +2542,7 @@ function PlatformApplicantsList() {
               <tbody>
                 {filteredCompatibleGroups.length === 0 ? (
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                       لا توجد مجموعات مطابقة للفلاتر المحددة حالياً.
                     </td>
                   </tr>
@@ -2540,6 +2567,11 @@ function PlatformApplicantsList() {
                       </td>
                       <td style={{ textAlign: 'center', fontWeight: 500 }}>{g.level}</td>
                       <td style={{ textAlign: 'center' }}>{g.stopped_surah}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ fontSize: 12, color: '#38bdf8', fontWeight: 500 }}>
+                          {g.preferred_days}
+                        </span>
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ fontSize: 12, color: 'var(--accent, #e5a93c)', fontWeight: 500 }}>
                           {g.preferred_time}
@@ -2738,6 +2770,7 @@ function PlatformApplicantsList() {
                   <span>الرواق: <strong>{selectedCompatGroup.rowaq}</strong></span>
                   <span>المستوى: <strong>{selectedCompatGroup.level}</strong></span>
                   <span>السورة: <strong>{selectedCompatGroup.stopped_surah}</strong></span>
+                  <span>الأيام المناسبة: <strong>{selectedCompatGroup.preferred_days}</strong></span>
                   <span>التوقيت المختار: <strong>{selectedCompatGroup.preferred_time}</strong></span>
                 </div>
               </div>
@@ -2885,6 +2918,7 @@ function PlatformApplicantsList() {
               <div><strong>الرواق:</strong> {mergeModalGroup.rowaq}</div>
               <div><strong>المستوى:</strong> {mergeModalGroup.level}</div>
               <div><strong>السورة المتوقف عندها:</strong> {mergeModalGroup.stopped_surah}</div>
+              <div><strong>الأيام المناسبة:</strong> {mergeModalGroup.preferred_days}</div>
               <div><strong>التوقيت المختار:</strong> {mergeModalGroup.preferred_time}</div>
             </div>
 
