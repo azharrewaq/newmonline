@@ -1541,16 +1541,18 @@ function PlatformApplicantsList() {
                   <Download size={16} /> تصدير
                 </button>
               )}
-              <button
-                className="btn btn-outline"
-                onClick={handleManualRefresh}
-                disabled={isRefreshing}
-                title="مزامنة فورية وتحديث بيانات المتقدمين والمجموعات من السيرفر مباشرة"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
-                {isRefreshing ? 'جارٍ التحديث...' : 'تحديث البيانات من السيرفر'}
-              </button>
+              {isAdmin && (
+                <button
+                  className="btn btn-outline"
+                  onClick={handleManualRefresh}
+                  disabled={isRefreshing}
+                  title="مزامنة فورية وتحديث بيانات المتقدمين والمجموعات من السيرفر مباشرة"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
+                  {isRefreshing ? 'جارٍ التحديث...' : 'تحديث البيانات من السيرفر'}
+                </button>
+              )}
               {isAdmin && (
                 <button
                   className="btn btn-outline"
