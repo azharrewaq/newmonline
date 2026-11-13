@@ -465,6 +465,69 @@ export function AppDataProvider({ children }) {
   const [dbSynced, setDbSynced] = useState(false);
   const deletedApplicantIdsRef = useRef(new Set());
   const pendingApplicantOpsRef = useRef(0);
+  const recentApplicantEditsRef = useRef(new Map());
+  const lastApplicantWriteAtRef = useRef(0);
+  const lastApplicantsSyncAtRef = useRef(0);
+
+  const recordRecentApplicantEdit = (keys, patch, isNew = false) => {
+    const now = Date.now();
+    lastApplicantWriteAtRef.current = now;
+    const expiresAt = now + 30000; // 30 ثانية فترة أمان لحماية التعديلات والإضافات الحديثة
+    keys.filter(Boolean).forEach(k => {
+      const keyStr = String(k);
+      const prevEntry = recentApplicantEditsRef.current.get(keyStr);
+      recentApplicantEditsRef.current.set(keyStr, {
+        patch: { ...(prevEntry?.patch || {}), ...patch },
+        isNew: Boolean(isNew || prevEntry?.isNew),
+        expiresAt,
+      });
+    });
+  };
+
+  const mergeApplicantsWithLocalProtection = (prevList, remoteNormApps) => {
+    const now = Date.now();
+    // تنظيف التعديلات المنتهية صلاحيتها
+    for (const [k, entry] of recentApplicantEditsRef.current.entries()) {
+      if (!entry || entry.expiresAt <= now) {
+        recentApplicantEditsRef.current.delete(k);
+      }
+    }
+
+    const remoteIds = new Set();
+    const remoteNids = new Set();
+    remoteNormApps.forEach(item => {
+      if (item.id) remoteIds.add(String(item.id));
+      if (item._id) remoteIds.add(String(item._id));
+      const nid = String(item.national_id || item.passport_no || '').trim();
+      if (nid) remoteNids.add(nid);
+    });
+
+    // الحفاظ على العناصر المضافة محلياً حديثاً والتي لم تظهر في رد السيرفر بعد
+    const recentNewLocals = (Array.isArray(prevList) ? prevList : []).filter(loc => {
+      const idStr = loc.id ? String(loc.id) : null;
+      const underIdStr = loc._id ? String(loc._id) : null;
+      const nid = String(loc.national_id || loc.passport_no || '').trim();
+      if ((idStr && remoteIds.has(idStr)) || (underIdStr && remoteIds.has(underIdStr)) || (nid && remoteNids.has(nid))) {
+        return false;
+      }
+      const entry = (idStr && recentApplicantEditsRef.current.get(idStr)) ||
+                    (underIdStr && recentApplicantEditsRef.current.get(underIdStr));
+      return Boolean(entry && entry.isNew);
+    });
+
+    const mergedRemote = remoteNormApps.map(rem => {
+      const idStr = rem.id ? String(rem.id) : null;
+      const underIdStr = rem._id ? String(rem._id) : null;
+      const entry = (idStr && recentApplicantEditsRef.current.get(idStr)) ||
+                    (underIdStr && recentApplicantEditsRef.current.get(underIdStr));
+      if (entry && entry.patch) {
+        return { ...rem, ...entry.patch };
+      }
+      return rem;
+    });
+
+    return [...recentNewLocals, ...mergedRemote];
+  };
 
   // دمج مجموعات تحديد المستوى وحماية التسكين اليدوي (المحفظين والمنسقين والروابط) من الحذف أو الاستبدال
   const mergePlacementGroupLists = (localList, remoteList) => {
@@ -528,10 +591,6 @@ export function AppDataProvider({ children }) {
             }));
             if (mapper) normalizedRemote = normalizedRemote.map(mapper);
 
-            // الحصول على القائمة المحلية من التخزين لحماية الإضافات اليدوية من الاختفاء
-            const localStored = getFromLocalStorage(key, []);
-            const currentLocal = Array.isArray(localStored) && localStored.length > 0 ? localStored : (Array.isArray(state) ? state : []);
-
             // تجميع المعرفات والأرقام القومية للبيانات القادمة من السيرفر
             const remoteNids = new Set(
               normalizedRemote
@@ -544,46 +603,66 @@ export function AppDataProvider({ children }) {
                 .filter(Boolean)
             );
 
-            // الكشف عن العناصر المحلية غير الموجودة في السيرفر بعد
-            const missingLocals = currentLocal.filter(loc => {
+            // استخدام التحديث الوظيفي (prev) لحظة وصول الرد لمنع مسح أي تعديل أو إضافة تمت أثناء التحميل
+            const localStored = getFromLocalStorage(key, []);
+            const snapshotLocal = Array.isArray(localStored) && localStored.length > 0 ? localStored : (Array.isArray(state) ? state : []);
+            const missingFromSnapshot = snapshotLocal.filter(loc => {
               const locNid = String(loc.national_id || loc.passport_no || loc.username || '').trim();
               const locId = loc.id ? String(loc.id) : null;
               const locUnderscoreId = loc._id ? String(loc._id) : null;
-
               if (locNid && remoteNids.has(locNid)) return false;
               if (locId && remoteIds.has(locId)) return false;
               if (locUnderscoreId && remoteIds.has(locUnderscoreId)) return false;
               return true;
             });
 
-            // مزامنة العناصر المحلية المفقودة للسيرفر تلقائياً لضمان عدم ضياعها
-            if (missingLocals.length > 0) {
-              console.log(`Preserving ${missingLocals.length} local items for ${key} and syncing to server...`);
-              missingLocals.forEach(loc => {
+            if (missingFromSnapshot.length > 0) {
+              console.log(`Preserving ${missingFromSnapshot.length} local items for ${key} and syncing to server...`);
+              missingFromSnapshot.forEach(loc => {
                 api.create(loc).catch(() => {});
               });
             }
 
-            // دمج التعديلات المحلية الحديثة مع السجلات البعيدة
-            const merged = [
-              ...normalizedRemote.map(rem => {
-                const locMatch = currentLocal.find(loc => {
-                  const remNid = String(rem.national_id || rem.passport_no || rem.username || '').trim();
-                  const locNid = String(loc.national_id || loc.passport_no || loc.username || '').trim();
-                  if (remNid && locNid && remNid === locNid) return true;
-                  return (rem.id && loc.id && String(rem.id) === String(loc.id)) ||
-                         (rem._id && loc._id && String(rem._id) === String(loc._id));
-                });
-                if (!locMatch) return rem;
-                return { ...rem, ...locMatch };
-              }),
-              ...missingLocals
-            ];
+            setState(prev => {
+              const currentLocal = (Array.isArray(prev) && prev.length > 0)
+                ? prev
+                : snapshotLocal;
 
-            setState(merged);
-            saveToLocalStorage(key, merged);
+              const missingLocals = currentLocal.filter(loc => {
+                const locNid = String(loc.national_id || loc.passport_no || loc.username || '').trim();
+                const locId = loc.id ? String(loc.id) : null;
+                const locUnderscoreId = loc._id ? String(loc._id) : null;
+                if (locNid && remoteNids.has(locNid)) return false;
+                if (locId && remoteIds.has(locId)) return false;
+                if (locUnderscoreId && remoteIds.has(locUnderscoreId)) return false;
+                return true;
+              });
+
+              const merged = [
+                ...normalizedRemote.map(rem => {
+                  const locMatch = currentLocal.find(loc => {
+                    const remNid = String(rem.national_id || rem.passport_no || rem.username || '').trim();
+                    const locNid = String(loc.national_id || loc.passport_no || loc.username || '').trim();
+                    if (remNid && locNid && remNid === locNid) return true;
+                    return (rem.id && loc.id && String(rem.id) === String(loc.id)) ||
+                           (rem._id && loc._id && String(rem._id) === String(loc._id));
+                  });
+                  if (!locMatch) return rem;
+                  return { ...rem, ...locMatch };
+                }),
+                ...missingLocals
+              ];
+
+              const finalMerged = key === 'platformApplicants'
+                ? mergeApplicantsWithLocalProtection(prev, merged)
+                : merged;
+
+              saveToLocalStorage(key, finalMerged);
+              return finalMerged;
+            });
+
             if (remoteData.length > 0) {
-              console.log(`✓ Fetched & merged ${merged.length} items for ${key}`);
+              console.log(`✓ Fetched & merged ${normalizedRemote.length} items for ${key}`);
             }
           }
         };
@@ -2160,13 +2239,23 @@ export function AppDataProvider({ children }) {
 
   // مزامنة فورية ودورية لبيانات المتقدمين الجدد ومجموعات تحديد المستوى بين جميع الأجهزة
   useEffect(() => {
-    const syncApplicantsFromRemote = async () => {
+    const syncApplicantsFromRemote = async (isFocusTrigger = false) => {
+      const now = Date.now();
       if (pendingApplicantOpsRef.current > 0) return;
+      // تهدئة المزامنة أثناء تعديل أو إضافة المستخدم للنتائج لمنع أي وميض أو اختفاء
+      if (now - lastApplicantWriteAtRef.current < 15000) return;
+      // منع تكرار المزامنة المفرطة عند التنقل المتكرر بين النوافذ
+      if (isFocusTrigger && now - lastApplicantsSyncAtRef.current < 20000) return;
+
+      lastApplicantsSyncAtRef.current = now;
+      const syncStartedAt = now;
+
       const [remoteApps, remotePG] = await Promise.all([
         platformApplicantsAPI.getAll().catch(() => null),
         placementGroupsAPI.getAll().catch(() => null),
       ]);
-      if (pendingApplicantOpsRef.current > 0) return;
+      // إذا قام المستخدم بأي تعديل أو إضافة أثناء انتظار رد السيرفر، نتجاهل اللقطة القديمة
+      if (pendingApplicantOpsRef.current > 0 || lastApplicantWriteAtRef.current > syncStartedAt) return;
 
       if (Array.isArray(remoteApps)) {
         const deletedSet = deletedApplicantIdsRef.current;
@@ -2187,8 +2276,11 @@ export function AppDataProvider({ children }) {
             if (nid && deletedSet.has(nid)) return false;
             return true;
           });
-        setPlatformApplicants(normApps);
-        saveToLocalStorage('platformApplicants', normApps);
+        setPlatformApplicants(prev => {
+          const merged = mergeApplicantsWithLocalProtection(prev, normApps);
+          saveToLocalStorage('platformApplicants', merged);
+          return merged;
+        });
       }
 
       if (Array.isArray(remotePG) && remotePG.length > 0) {
@@ -2223,10 +2315,10 @@ export function AppDataProvider({ children }) {
       }
     };
 
-    const intervalId = setInterval(syncApplicantsFromRemote, 60000);
+    const intervalId = setInterval(() => syncApplicantsFromRemote(false), 60000);
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
-        syncApplicantsFromRemote();
+        syncApplicantsFromRemote(true);
       }
     };
     window.addEventListener('focus', handleVisibilityOrFocus);
@@ -2658,6 +2750,7 @@ export function AppDataProvider({ children }) {
     const nid = String(newItem.national_id || newItem.passport_no || '').trim();
     if (nid) deletedApplicantIdsRef.current.delete(nid);
     deletedApplicantIdsRef.current.delete(String(newItem.id));
+    recordRecentApplicantEdit([newItem.id], newItem, true);
     setPlatformApplicants(prev => {
       const next = [newItem, ...prev];
       saveToLocalStorage('platformApplicants', next);
@@ -2667,6 +2760,7 @@ export function AppDataProvider({ children }) {
     platformApplicantsAPI.create(newItem)
       .then(created => {
         if (created && created._id) {
+          recordRecentApplicantEdit([newItem.id, created._id], { _id: created._id }, true);
           setPlatformApplicants(prev => {
             const next = prev.map(m => String(m.id) === String(newItem.id) ? { ...m, _id: created._id } : m);
             saveToLocalStorage('platformApplicants', next);
@@ -2691,6 +2785,8 @@ export function AppDataProvider({ children }) {
     const remoteId = target?._id || id;
     const oldNid = target ? String(target.national_id || target.passport_no || '').trim() : '';
     const newNid = String(sanitizedItem.national_id || sanitizedItem.passport_no || '').trim();
+
+    recordRecentApplicantEdit([id, target?.id, remoteId], sanitizedItem, false);
 
     setPlatformApplicants(prev => {
       const next = prev.map(m => (String(m.id) === String(id) || String(m._id) === String(id)) ? { ...m, ...sanitizedItem } : m);
@@ -2717,7 +2813,11 @@ export function AppDataProvider({ children }) {
       if (target?._id) idsToDelete.add(String(target._id));
       if (targetNid) idsToDelete.add(targetNid);
 
-      idsToDelete.forEach(k => deletedApplicantIdsRef.current.add(k));
+      lastApplicantWriteAtRef.current = Date.now();
+      idsToDelete.forEach(k => {
+        deletedApplicantIdsRef.current.add(k);
+        recentApplicantEditsRef.current.delete(k);
+      });
 
       setPlatformApplicants(prev => {
         const next = prev.filter(m => {
@@ -2752,10 +2852,12 @@ export function AppDataProvider({ children }) {
       exam_time: a.exam_time ? normalizeExamTime(a.exam_time) : ''
     }));
 
+    lastApplicantWriteAtRef.current = Date.now();
     newApplicants.forEach(a => {
       if (a.id) deletedApplicantIdsRef.current.delete(String(a.id));
       const nid = String(a.national_id || a.passport_no || '').trim();
       if (nid) deletedApplicantIdsRef.current.delete(nid);
+      recordRecentApplicantEdit([a.id, nid].filter(Boolean), a, true);
     });
 
     pendingApplicantOpsRef.current += 1;
