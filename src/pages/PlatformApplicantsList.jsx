@@ -32,6 +32,7 @@ import {
   printPlacementExamSheets,
   rescheduleApplicantDay9,
   splitApplicantsIntoQuarterTimes,
+  getDefaultSurahForSeniorLevel,
 } from '../utils/placementHelpers';
 
 function PlatformApplicantsList() {
@@ -312,6 +313,12 @@ function PlatformApplicantsList() {
     }
     if (field === 'applied_level') {
       patch.level = value;
+      const autoSurah = getDefaultSurahForSeniorLevel(applicant.rowaq, applicant.tested_level || value);
+      if (autoSurah) patch.stopped_surah = autoSurah;
+    }
+    if (field === 'tested_level') {
+      const autoSurah = getDefaultSurahForSeniorLevel(applicant.rowaq, value || applicant.applied_level || applicant.level);
+      if (autoSurah) patch.stopped_surah = autoSurah;
     }
     if (field === 'group_no') {
       const grp = placementGroups.find(g => String(g.group_no) === String(value));
@@ -328,7 +335,7 @@ function PlatformApplicantsList() {
     const nextRowaq = field === 'rowaq' ? value : applicant.rowaq;
     const nextTested = field === 'tested_level' ? value : (field === 'rowaq' ? '' : applicant.tested_level);
     const nextApplied = field === 'applied_level' ? value : (field === 'rowaq' ? '' : (applicant.applied_level || applicant.level));
-    const nextSurah = field === 'stopped_surah' ? value : applicant.stopped_surah;
+    const nextSurah = field === 'stopped_surah' ? value : (patch.stopped_surah || applicant.stopped_surah);
     if (nextRowaq && (nextTested || (nextApplied && nextSurah))) {
       patch.status = 'تم تحديد المستوى';
     }
@@ -345,7 +352,14 @@ function PlatformApplicantsList() {
       last_modified_role: currentUser?.role || '',
       last_modified_at: new Date().toISOString(),
     };
-    if (applicant.rowaq && (applicant.tested_level || (applicant.applied_level && applicant.stopped_surah))) {
+    if (!applicant.stopped_surah) {
+      const autoSurah = getDefaultSurahForSeniorLevel(
+        applicant.rowaq,
+        applicant.tested_level || applicant.applied_level || applicant.level
+      );
+      if (autoSurah) patch.stopped_surah = autoSurah;
+    }
+    if (applicant.rowaq && (applicant.tested_level || (applicant.applied_level && (applicant.stopped_surah || patch.stopped_surah)))) {
       patch.status = 'تم تحديد المستوى';
     }
     updatePlatformApplicant(applicant.id, patch);
@@ -709,7 +723,7 @@ function PlatformApplicantsList() {
         ...(hideStudentPhone ? {} : { 'رقم التليفون': a.phone || '' }),
         'الرواق': normalizeApplicantRowaq(a.rowaq, a.gender) || '',
         'المستوى وفق الاختبار': a.tested_level || '',
-        'السورة المتوقف عندها': a.stopped_surah || '',
+        'السورة المتوقف عندها': a.stopped_surah || getDefaultSurahForSeniorLevel(a.rowaq, a.tested_level || a.applied_level || a.level) || '',
         'الأيام المناسبة': normalizePreferredDays(a.preferred_days) || '',
         'التوقيت المناسب': a.preferred_time || '',
         'رقم المجموعة': a.group_no || '',
@@ -831,7 +845,9 @@ function PlatformApplicantsList() {
           if (appliedLevel) patch.applied_level = appliedLevel;
           if (testedLevel) patch.tested_level = testedLevel;
           if (level) patch.level = level;
+          const autoSurahImport = getDefaultSurahForSeniorLevel(patch.rowaq || ex.rowaq, patch.tested_level || patch.applied_level || patch.level || ex.tested_level || ex.applied_level || ex.level);
           if (stoppedSurah) patch.stopped_surah = stoppedSurah;
+          else if (autoSurahImport) patch.stopped_surah = autoSurahImport;
           if (preferredDays) patch.preferred_days = preferredDays;
           if (preferredTime) patch.preferred_time = preferredTime;
           if (q1 !== '') patch.q1 = q1;
@@ -872,7 +888,7 @@ function PlatformApplicantsList() {
           level,
           applied_level: appliedLevel,
           tested_level: testedLevel,
-          stopped_surah: stoppedSurah,
+          stopped_surah: stoppedSurah || getDefaultSurahForSeniorLevel(normRowaq, testedLevel || appliedLevel || level) || '',
           preferred_days: preferredDays,
           preferred_time: preferredTime,
           q1,
@@ -944,7 +960,7 @@ function PlatformApplicantsList() {
       const effLevel = (a.tested_level || a.applied_level || a.level || '').trim();
       if (!r || !effLevel) return;
 
-      const surah = (a.stopped_surah || 'غير محدد').trim();
+      const surah = (a.stopped_surah || getDefaultSurahForSeniorLevel(r, effLevel) || 'غير محدد').trim();
       const prefDays = normalizePreferredDays(a.preferred_days || '') || 'غير محدد';
       const prefTime = (a.preferred_time || 'غير محدد').trim();
 
@@ -1694,7 +1710,7 @@ function PlatformApplicantsList() {
                           <select
                             className="form-select"
                             style={{ padding: '4px 8px', fontSize: 13 }}
-                            value={a.stopped_surah || ''}
+                            value={a.stopped_surah || getDefaultSurahForSeniorLevel(rowRowaq, a.tested_level || a.applied_level || a.level) || ''}
                             onChange={e => handleInlineUpdate(a, 'stopped_surah', e.target.value)}
                           >
                             <option value="">-- السورة --</option>

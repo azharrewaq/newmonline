@@ -19,6 +19,7 @@ import {
   normalizeExamTime,
   isLegacyDefaultGroupShift,
   getGroupTimeLabel,
+  getDefaultSurahForSeniorLevel,
 } from '../utils/placementHelpers';
 import { normalizeArabic } from '../utils/userScopeHelper';
 
@@ -113,9 +114,25 @@ function PlatformApplicantsCreate() {
       const nextGender = value.includes('سيدات') || value.includes('نساء') ? 'أنثى' : (value.includes('رجال') ? 'ذكر' : '');
       setForm(prev => ({ ...prev, rowaq: value, gender: nextGender || prev.gender, level: '', applied_level: '', tested_level: '' }));
     } else if (name === 'applied_level') {
-      setForm(prev => ({ ...prev, applied_level: value, level: prev.tested_level || value }));
+      setForm(prev => {
+        const autoSurah = getDefaultSurahForSeniorLevel(prev.rowaq, prev.tested_level || value);
+        return {
+          ...prev,
+          applied_level: value,
+          level: prev.tested_level || value,
+          ...(autoSurah ? { stopped_surah: autoSurah } : {}),
+        };
+      });
     } else if (name === 'tested_level') {
-      setForm(prev => ({ ...prev, tested_level: value, level: value || prev.applied_level }));
+      setForm(prev => {
+        const autoSurah = getDefaultSurahForSeniorLevel(prev.rowaq, value || prev.applied_level);
+        return {
+          ...prev,
+          tested_level: value,
+          level: value || prev.applied_level,
+          ...(autoSurah ? { stopped_surah: autoSurah } : {}),
+        };
+      });
     } else if (name === 'group_no') {
       const grp = placementGroups.find(g => String(g.group_no) === String(value));
       setForm(prev => ({
@@ -154,7 +171,7 @@ function PlatformApplicantsCreate() {
           level: a.level || '',
           applied_level: a.applied_level || a.level || '',
           tested_level: a.tested_level || '',
-          stopped_surah: a.stopped_surah || '',
+          stopped_surah: a.stopped_surah || getDefaultSurahForSeniorLevel(normalizeApplicantRowaq(a.rowaq, a.gender), a.tested_level || a.applied_level || a.level) || '',
           preferred_days: normalizePreferredDays(a.preferred_days) || '',
           preferred_time: a.preferred_time || '',
           group_no: a.group_no || '',

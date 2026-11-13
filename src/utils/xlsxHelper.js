@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import { quranSurahs } from '../data/quranSurahs';
 import { countriesList } from '../data/countries';
 import egyptCenters from '../data/egyptCenters';
-import { formatTime12Ar } from './placementHelpers';
+import { formatTime12Ar, getDefaultSurahForSeniorLevel } from './placementHelpers';
 
 // Avoid Vite/ESM bundling issues where XLSX properties might be nested under default
 const xlsxLib = XLSX && XLSX.utils ? XLSX : (XLSX[String('default')] || XLSX);
@@ -532,7 +532,7 @@ export function exportExamSheetsToXLSX(
           totalCell,
           a.rowaq || '',
           isBefore ? '' : (a.tested_level || ''),
-          isBefore ? '' : (a.stopped_surah || ''),
+          isBefore ? '' : (a.stopped_surah || getDefaultSurahForSeniorLevel(a.rowaq, a.tested_level || a.applied_level || a.level) || ''),
           a.preferred_days || '',
           a.preferred_time || '',
           a.exam_time ? formatTime12Ar(a.exam_time) : '',

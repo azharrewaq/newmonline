@@ -52,8 +52,49 @@ export const getLevelsForApplicantRowaq = (rowaq) => {
   const n = normalizeArabic(rowaq || '');
   if (!n) return [];
   if (n.includes('اطفال') || n.includes('طفل')) return CHILDREN_LEVELS;
-  if (n.includes('كبار') || n.includes('رجال') || n.includes('نساء')) return SENIORS_LEVELS;
+  if (n.includes('كبار') || n.includes('رجال') || n.includes('نساء') || n.includes('سيدات')) return SENIORS_LEVELS;
   return [];
+};
+
+/**
+ * تحديد السورة المتوقف عندها تلقائياً لمستويات أروقة الكبار (رجال وسيدات):
+ * - المستوى الأول والثاني والثالث (السنة الواحدة / العامين / الثلاث سنوات) -> البقرة
+ * - المستوى الرابع والخامس (من سورة البقرة) -> البقرة
+ * - المستوى الرابع والخامس (من سورة الناس) -> الناس
+ */
+export const getDefaultSurahForSeniorLevel = (rowaq, level) => {
+  const r = normalizeArabic(rowaq || '');
+  const l = normalizeArabic(level || '');
+  if (!l) return null;
+
+  const isChildRowaq = r.includes('اطفال') || r.includes('طفل');
+  if (isChildRowaq) return null;
+
+  const isSeniorRowaq =
+    r.includes('كبار') || r.includes('رجال') || r.includes('سيدات') || r.includes('نساء');
+  const isSeniorLevel =
+    l.includes('سنه') ||
+    l.includes('عامين') ||
+    l.includes('ثلاث') ||
+    l.includes('اربع') ||
+    l.includes('خمس') ||
+    l.includes('البقره') ||
+    l.includes('الناس');
+
+  if (isSeniorRowaq || isSeniorLevel) {
+    if (l.includes('الناس')) return 'الناس';
+    if (
+      isSeniorLevel ||
+      l.includes('الاول') ||
+      l.includes('الثاني') ||
+      l.includes('الثالث') ||
+      l.includes('الرابع') ||
+      l.includes('الخامس')
+    ) {
+      return 'البقرة';
+    }
+  }
+  return null;
 };
 
 // تطبيع قيمة الرواق القادمة من ملف إكسيل أو بيانات قديمة إلى أحد الخيارات الثلاثة
@@ -647,7 +688,7 @@ export const printPlacementExamSheets = (sheets = []) => {
       const rowaq = normalizeApplicantRowaq(a.rowaq, a.gender) || '';
       const appliedLevel = a.applied_level || a.level || '';
       const testedLevel = isBefore ? '' : (a.tested_level || '');
-      const stoppedSurah = isBefore ? '' : (a.stopped_surah || '');
+      const stoppedSurah = isBefore ? '' : (a.stopped_surah || getDefaultSurahForSeniorLevel(rowaq, testedLevel || appliedLevel) || '');
       const prefDays = normalizePreferredDays(a.preferred_days) || '';
       const prefTime = a.preferred_time || '';
       const q1Val = isBefore ? '' : (a.q1 ?? '');
