@@ -2110,7 +2110,7 @@ export function AppDataProvider({ children }) {
   };
 
   const updateUser = (id, updatedUser) => {
-    const existingUser = users.find(u => String(u.id) === String(id) || String(u._id) === String(id));
+    const existingUser = users.find(u => String(u.id) === String(id) || (u._id && String(u._id) === String(id)));
     const oldNid = existingUser ? String(existingUser.national_id || existingUser.username || existingUser.email || '').trim() : '';
     const newNid = String(updatedUser.national_id || updatedUser.username || '').trim();
 
@@ -2127,21 +2127,30 @@ export function AppDataProvider({ children }) {
           national_id: 'admin',
           password: newPass,
           record_number: newPass, // ← نحفظ الباسورد الجديد هنا أيضاً (ليس 'admin')
+          password_updated: Boolean(updatedUser.password_updated || updatedUser.password || merged.password_updated),
         };
       }
+      const explicitNewPass = updatedUser.password !== undefined && updatedUser.password !== ''
+        ? updatedUser.password
+        : null;
+      const finalPassword = explicitNewPass || merged.password || merged.record_number || '';
+      const finalRecordNumber = explicitNewPass
+        ? explicitNewPass
+        : (updatedUser.record_number || merged.record_number || merged.password || '');
       return {
         ...merged,
         username: merged.national_id || merged.email || merged.username || '',
         email: merged.email || merged.national_id || '',
-        password: merged.password || merged.record_number || '',
-        record_number: merged.record_number || merged.password || '',
+        password: finalPassword,
+        record_number: finalRecordNumber,
+        password_updated: Boolean(updatedUser.password_updated || explicitNewPass || merged.password_updated),
       };
     };
-    let payload = null;
+
+    const payload = existingUser ? mergeAndNormalize(existingUser) : null;
     setUsers(prev => prev.map(u => {
       if (String(u.id) === String(id) || (u._id && String(u._id) === String(id))) {
-        payload = mergeAndNormalize(u);
-        return payload;
+        return mergeAndNormalize(u);
       }
       return u;
     }));

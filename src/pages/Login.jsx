@@ -86,26 +86,44 @@ function Login() {
       return;
     }
 
-    // دالة مساعدة لمطابقة بيانات الموظفين والمنسقين
-    const matchStaffCredentials = (staff) => {
+    // دوال مساعدة لمطابقة بيانات الموظفين والمنسقين
+    const matchStaffIdentifier = (staff) => {
       if (!staff) return false;
       const ids = [staff.national_id, staff.username, staff.email, staff.phone].map(v => toEnglishDigits(String(v || '').trim()));
       const rawIds = [staff.national_id, staff.username, staff.email, staff.phone].map(v => String(v || '').trim());
-      const pws = [staff.password, staff.record_number, staff.record_no, staff.registry_no, staff.national_id, staff.phone].map(v => toEnglishDigits(String(v || '').trim()));
-      const rawPws = [staff.password, staff.record_number, staff.record_no, staff.registry_no, staff.national_id, staff.phone].map(v => String(v || '').trim());
-      
-      const matchId = ids.some(id => id && (id === inputUser || id === inputUserRaw)) || 
-                      rawIds.some(id => id && (id === inputUser || id === inputUserRaw)) ||
-                      (staff.name && normalizeArabic(staff.name) === normalizeArabic(inputUserRaw));
-
-      const matchPw = pws.some(pw => pw && (pw === inputPass || pw === inputPassRaw)) || 
-                      rawPws.some(pw => pw && (pw === inputPass || pw === inputPassRaw));
-
-      return matchId && matchPw;
+      return ids.some(id => id && (id === inputUser || id === inputUserRaw)) ||
+             rawIds.some(id => id && (id === inputUser || id === inputUserRaw)) ||
+             (staff.name && normalizeArabic(staff.name) === normalizeArabic(inputUserRaw));
     };
 
+    const hasCustomPassword = (staff) => {
+      if (!staff) return false;
+      if (staff.password_updated) return true;
+      const pw = toEnglishDigits(String(staff.password || '').trim());
+      if (!pw) return false;
+      const defaults = [staff.national_id, staff.phone, staff.registry_no, staff.record_no]
+        .map(v => toEnglishDigits(String(v || '').trim()))
+        .filter(Boolean);
+      return !defaults.includes(pw);
+    };
+
+    const matchStaffPassword = (staff, isUserAccount = false) => {
+      if (!staff) return false;
+      const rawFields = (isUserAccount && hasCustomPassword(staff))
+        ? [staff.password]
+        : [staff.password, staff.record_number, staff.record_no, staff.registry_no, staff.national_id, staff.phone];
+      const pws = rawFields.map(v => toEnglishDigits(String(v || '').trim()));
+      const rawPws = rawFields.map(v => String(v || '').trim());
+      return pws.some(pw => pw && (pw === inputPass || pw === inputPassRaw)) ||
+             rawPws.some(pw => pw && (pw === inputPass || pw === inputPassRaw));
+    };
+
+    const matchStaffCredentials = (staff) => matchStaffIdentifier(staff) && matchStaffPassword(staff, false);
+
     // ===== 1) البحث في قائمة المستخدمين أولاً =====
-    let foundUser = users.find(u => matchStaffCredentials(u));
+    const matchedUserAccounts = users.filter(u => matchStaffIdentifier(u));
+    const accountExistsInUsers = matchedUserAccounts.length > 0;
+    let foundUser = matchedUserAccounts.find(u => matchStaffPassword(u, true));
 
     // تحقق إضافي لدارسي العلوم الشرعية لتحديث دورهم أو التعرف عليهم مباشرة
     try {
@@ -117,7 +135,7 @@ function Login() {
       if (shariaMatch) {
         if (foundUser) {
           foundUser.role = 'sharia_student';
-        } else {
+        } else if (!accountExistsInUsers) {
           foundUser = {
             name: shariaMatch.name,
             email: shariaMatch.nationalId,
@@ -195,7 +213,7 @@ function Login() {
         );
         if (pm && !foundUser.name) foundUser.name = pm.name;
       }
-    } else {
+    } else if (!accountExistsInUsers) {
       console.log('🔍 لم يُعثر عليه في المستخدمين، جاري البحث في بيانات النظام...');
 
       // البحث في المنسقين (شئون الأروقة)
@@ -343,13 +361,14 @@ function Login() {
     }
 
     // ===== 3) إذا لم يتم العثور عليه في الذاكرة المحلية (خاصة في المتصفحات الجديدة قبل اكتمال المزامنة)، نستعلم مباشرة من الخادم (MongoDB) =====
-    if (!foundUser) {
+    let remoteAccountExists = accountExistsInUsers;
+    if (!foundUser && !remoteAccountExists) {
       try {
         // أ) البحث المباشر في مجموعة المستخدمين بالخادم
         const remoteUser = await usersAPI.getByUsername(encodeURIComponent(inputUser)).catch(() => null);
         if (remoteUser && (remoteUser.username || remoteUser.national_id || remoteUser.email)) {
-          const pws = [remoteUser.password, remoteUser.record_number, remoteUser.registry_no].map(v => String(v || '').trim());
-          if (pws.some(pw => pw && pw === inputPass)) {
+          remoteAccountExists = true;
+          if (matchStaffPassword(remoteUser, true)) {
             foundUser = remoteUser;
           }
         }
@@ -358,7 +377,7 @@ function Login() {
       }
     }
 
-    if (!foundUser) {
+    if (!foundUser && !remoteAccountExists) {
       try {
         // ب) البحث في المتقدمين الجدد بالخادم مباشرة
         const remoteApp = await apiCall(`/platformapplicants/${encodeURIComponent(inputUser)}`).catch(() => null);

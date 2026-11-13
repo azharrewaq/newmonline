@@ -167,6 +167,7 @@ function UsersList() {
         if (modalForm.password) {
           updateData.password = modalForm.password;
           updateData.record_number = modalForm.password; // تحديث record_number أيضاً لمنع الدخول بالباسورد القديم
+          updateData.password_updated = true;
         }
       } else {
         updateData = {
@@ -185,27 +186,27 @@ function UsersList() {
           updateData.username = modalForm.email;
         }
         
-        // تحديث كلمة المرور إذا أُدخلت
+        // تحديث كلمة المرور إذا أُدخلت (الأولوية لها وتُحدِّث رقم السجل أيضاً)
         if (modalForm.password) {
           updateData.password = modalForm.password;
           updateData.record_number = modalForm.password;
+          updateData.password_updated = true;
+        } else if (modalForm.record_number) {
+          // تحديث رقم السجل فقط إذا لم تُدخل كلمة مرور جديدة
+          updateData.record_number = modalForm.record_number;
+          if (modalForm.record_number !== (editingUser.record_number || '')) {
+            updateData.password = modalForm.record_number;
+            updateData.password_updated = true;
+          }
         }
         
         // تحديث الرقم القومي إذا أُدخل
         if (modalForm.national_id) {
           updateData.national_id = modalForm.national_id;
         }
-        
-        // تحديث رقم السجل إذا أُدخل
-        if (modalForm.record_number) {
-          updateData.record_number = modalForm.record_number;
-          if (!modalForm.password) {
-            updateData.password = modalForm.record_number;
-          }
-        }
       }
       
-      updateUser(editingUser.id, updateData);
+      updateUser(editingUser._id || editingUser.id, updateData);
       alert('✅ تم تحديث بيانات المستخدم بنجاح');
     } else {
       if (!modalForm.name || !modalForm.phone || !modalForm.national_id || !modalForm.record_number) {
