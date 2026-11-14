@@ -742,7 +742,34 @@ function PlatformApplicantsList() {
     exportToXLSX(exportData, 'المتقدمين_الجدد_تحديد_المستوى', 'المتقدمين الجدد');
   };
 
-  // تصدير الدارسين الموزعين فقط (الذين تم تحديد الرواق والمستوى لهم) إلى Excel
+  // تصدير قائمة دارسين موزعين مسطّرة (كدارسين لعمل حصر بدون تقسيم مجموعات)
+  const exportDistributedStudentsFlat = (list, fileName = 'حصر_الدارسين_الموزعين_فقط') => {
+    if (hideStudentPhone) return;
+    if (!list || list.length === 0) {
+      alert('لا يوجد دارسون موزعون للتصدير');
+      return;
+    }
+    const exportData = list.map((a, idx) => {
+      const r = normalizeApplicantRowaq(a.rowaq, a.gender) || a.rowaq || '';
+      const effLevel = (a.tested_level || a.applied_level || a.level || '').trim();
+      return {
+        'م': idx + 1,
+        'الاسم': a.name || '',
+        'الرقم القومي أو جواز السفر': a.national_id || a.passport_no || '',
+        'النوع': normalizeApplicantGender(a.gender, a.rowaq) || '',
+        'المحافظة': a.governorate || '',
+        ...(hideStudentPhone ? {} : { 'رقم التليفون': a.phone || '' }),
+        'الرواق': r,
+        'المستوى المحدد': effLevel,
+        'السورة المتوقف عندها': a.stopped_surah || getDefaultSurahForSeniorLevel(r, effLevel) || '',
+        'الأيام المناسبة': normalizePreferredDays(a.preferred_days) || '',
+        'التوقيت المناسب': a.preferred_time || '',
+      };
+    });
+    exportToXLSX(exportData, fileName, 'حصر الدارسين الموزعين');
+  };
+
+  // تصدير الدارسين الموزعين فقط (الذين تم تحديد الرواق والمستوى لهم) إلى Excel كقائمة دارسين للحصر
   const handleExportDistributed = () => {
     if (hideStudentPhone) return;
     const distributedList = sortedFiltered.filter(a => {
@@ -750,12 +777,7 @@ function PlatformApplicantsList() {
       const effLevel = (a.tested_level || a.applied_level || a.level || '').trim();
       return Boolean(r && effLevel);
     });
-    if (distributedList.length === 0) {
-      alert('لا يوجد دارسون موزعون ضمن نتائج البحث الحالية للتصدير');
-      return;
-    }
-    const exportData = distributedList.map(mapApplicantToExportRow);
-    exportToXLSX(exportData, 'الدارسين_الموزعين_فقط', 'الدارسين الموزعين');
+    exportDistributedStudentsFlat(distributedList, 'حصر_الدارسين_الموزعين_فقط');
   };
 
   // تصدير نموذج الاستيراد المعتمد (مع قوائم منسدلة مرتبطة بشيت المسميات)
@@ -2448,6 +2470,15 @@ function PlatformApplicantsList() {
               >
                 <Download size={15} /> تصدير كافة المجموعات ({allCompatibleGroups.length})
               </button>
+              {!hideStudentPhone && (
+                <button
+                  className="btn btn-gold-outline"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 'bold' }}
+                  onClick={() => exportDistributedStudentsFlat(allCompatibleGroups.flatMap(g => g.members), `حصر_الدارسين_الموزعين_(${totalGroupedApplicants}_دارس)`)}
+                >
+                  <Download size={15} /> تصدير الدارسين الموزعين فقط ({totalGroupedApplicants} دارس)
+                </button>
+              )}
             </div>
           </div>
 
