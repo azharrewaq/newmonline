@@ -708,36 +708,54 @@ function PlatformApplicantsList() {
     }
   };
 
+  // تحويل سجل متقدم إلى صف Excel متطابق مع أعمدة الجدول
+  const mapApplicantToExportRow = (a) => {
+    const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
+    const displayExamTime = a.exam_time ? formatTime12Ar(a.exam_time) : (getGroupTimeLabel(grp, [a]) || '');
+    return {
+      'الاسم': a.name || '',
+      'الرقم القومي أو جواز السفر': a.national_id || a.passport_no || '',
+      'النوع': normalizeApplicantGender(a.gender, a.rowaq) || '',
+      'المحافظة': a.governorate || '',
+      ...(hideStudentPhone ? {} : { 'رقم التليفون': a.phone || '' }),
+      'الرواق': normalizeApplicantRowaq(a.rowaq, a.gender) || '',
+      'المستوى وفق الاختبار': a.tested_level || '',
+      'السورة المتوقف عندها': a.stopped_surah || getDefaultSurahForSeniorLevel(a.rowaq, a.tested_level || a.applied_level || a.level) || '',
+      'الأيام المناسبة': normalizePreferredDays(a.preferred_days) || '',
+      'التوقيت المناسب': a.preferred_time || '',
+      'رقم المجموعة': a.group_no || '',
+      'فترة المجموعة': getGroupTimeLabel(grp, [a]),
+      'المشرف العلمي': a.scientific_supervisor || grp?.scientific_supervisor || '',
+      'المشرف التقني': a.technical_supervisor || grp?.technical_supervisor || '',
+      'المحفظ': a.mohfez || grp?.mohfez || '',
+      'المنسق': a.coordinator || grp?.coordinator || '',
+      'تاريخ الاختبار': normalizeExamDate(a.exam_date) || '',
+      'توقيت الاختبار': displayExamTime,
+      'رابط تيمز': a.teams_link || grp?.teams_link || '',
+    };
+  };
+
   // تصدير جدول المتقدمين الحالي إلى Excel (متطابق 100% مع ترتيب وتوقيتات الموقع المعروضة)
   const handleExport = () => {
     if (hideStudentPhone) return;
-    const effectiveList = sortedFiltered;
-    const exportData = effectiveList.map(a => {
-      const grp = placementGroups.find(g => Number(g.group_no) === Number(a.group_no));
-      const displayExamTime = a.exam_time ? formatTime12Ar(a.exam_time) : (getGroupTimeLabel(grp, [a]) || '');
-      return {
-        'الاسم': a.name || '',
-        'الرقم القومي أو جواز السفر': a.national_id || a.passport_no || '',
-        'النوع': normalizeApplicantGender(a.gender, a.rowaq) || '',
-        'المحافظة': a.governorate || '',
-        ...(hideStudentPhone ? {} : { 'رقم التليفون': a.phone || '' }),
-        'الرواق': normalizeApplicantRowaq(a.rowaq, a.gender) || '',
-        'المستوى وفق الاختبار': a.tested_level || '',
-        'السورة المتوقف عندها': a.stopped_surah || getDefaultSurahForSeniorLevel(a.rowaq, a.tested_level || a.applied_level || a.level) || '',
-        'الأيام المناسبة': normalizePreferredDays(a.preferred_days) || '',
-        'التوقيت المناسب': a.preferred_time || '',
-        'رقم المجموعة': a.group_no || '',
-        'فترة المجموعة': getGroupTimeLabel(grp, [a]),
-        'المشرف العلمي': a.scientific_supervisor || grp?.scientific_supervisor || '',
-        'المشرف التقني': a.technical_supervisor || grp?.technical_supervisor || '',
-        'المحفظ': a.mohfez || grp?.mohfez || '',
-        'المنسق': a.coordinator || grp?.coordinator || '',
-        'تاريخ الاختبار': normalizeExamDate(a.exam_date) || '',
-        'توقيت الاختبار': displayExamTime,
-        'رابط تيمز': a.teams_link || grp?.teams_link || '',
-      };
-    });
+    const exportData = sortedFiltered.map(mapApplicantToExportRow);
     exportToXLSX(exportData, 'المتقدمين_الجدد_تحديد_المستوى', 'المتقدمين الجدد');
+  };
+
+  // تصدير الدارسين الموزعين فقط (الذين تم تحديد الرواق والمستوى لهم) إلى Excel
+  const handleExportDistributed = () => {
+    if (hideStudentPhone) return;
+    const distributedList = sortedFiltered.filter(a => {
+      const r = normalizeApplicantRowaq(a.rowaq, a.gender) || a.rowaq || '';
+      const effLevel = (a.tested_level || a.applied_level || a.level || '').trim();
+      return Boolean(r && effLevel);
+    });
+    if (distributedList.length === 0) {
+      alert('لا يوجد دارسون موزعون ضمن نتائج البحث الحالية للتصدير');
+      return;
+    }
+    const exportData = distributedList.map(mapApplicantToExportRow);
+    exportToXLSX(exportData, 'الدارسين_الموزعين_فقط', 'الدارسين الموزعين');
   };
 
   // تصدير نموذج الاستيراد المعتمد (مع قوائم منسدلة مرتبطة بشيت المسميات)
@@ -1577,9 +1595,18 @@ function PlatformApplicantsList() {
                 <Download size={16} /> تصدير كشف الاختبار (إكسيل)
               </button>
               {!hideStudentPhone && (
-                <button className="btn btn-outline" onClick={handleExport}>
-                  <Download size={16} /> تصدير
-                </button>
+                <>
+                  <button className="btn btn-outline" onClick={handleExport}>
+                    <Download size={16} /> تصدير
+                  </button>
+                  <button
+                    className="btn btn-gold-outline"
+                    onClick={handleExportDistributed}
+                    title="تصدير الدارسين الموزعين فقط (الذين تم تحديد مستواهم وتسكينهم)"
+                  >
+                    <Download size={16} /> تصدير الدارسين الموزعين فقط
+                  </button>
+                </>
               )}
               {isAdmin && (
                 <button
